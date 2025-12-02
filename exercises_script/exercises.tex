@@ -1,0 +1,1633 @@
+\documentclass[12pt, a4paper]{article}
+
+% Preamble: Setting up our beautiful document
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}            % A clean, modern font
+\usepackage[english]{babel}
+\usepackage{geometry}
+\geometry{a4paper, margin=1.2in}  % Generous margins for readability
+\usepackage{amsmath, amssymb, amsthm} % The core of mathematical typesetting
+\usepackage{graphicx}
+\usepackage[dvipsnames, svgnames]{xcolor} % For beautiful, custom colors
+\usepackage{hyperref}           % Clickable links
+\usepackage{microtype}          % Subtle typographical improvements
+\usepackage{booktabs}           % Better tables
+\usepackage{parskip}            % Cleaner paragraph breaks (no indent)
+\usepackage{caption}            % For \captionof command
+
+% --- For beautiful code blocks ---
+\usepackage{listings}
+\definecolor{codegray}{gray}{0.95}
+\definecolor{codepurple}{rgb}{0.58, 0, 0.82}
+\definecolor{codeblue}{rgb}{0, 0, 0.6}
+\definecolor{codegreen}{rgb}{0.1, 0.5, 0.1}
+
+\lstdefinestyle{pythonstyle}{
+    language=Python,
+    backgroundcolor=\color{codegray},
+    commentstyle=\color{codegreen}\itshape,
+    keywordstyle=\color{codeblue}\bfseries,
+    numberstyle=\tiny\color{gray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\small,
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    numbers=left,
+    numbersep=5pt,
+    showspaces=flase,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=2,
+    frame=tb, % Top and bottom frame
+    framerule=0.5pt,
+}
+\lstset{style=pythonstyle}
+
+% --- For gorgeous theorem/exercise boxes ---
+\usepackage[most]{tcolorbox}
+
+% Professor's Note Box
+\newtcolorbox{profnote}[1][Professor's Note]{
+    colback=LightBlue!5!White,
+    colframe=Blue!60!Black,
+    fonttitle=\bfseries,
+    title={#1}
+}
+
+% Definition Box
+\newtcolorbox{definition}[1][Definition]{
+    colback=Green!5!White,
+    colframe=Green!50!Black,
+    fonttitle=\bfseries,
+    title={#1}
+}
+
+% PyTorch Command Box
+\newtcolorbox{pytorchcmd}[1][PyTorch Command]{
+    colback=Orange!5!White,
+    colframe=Orange!80!Black,
+    fonttitle=\bfseries,
+    title={#1}
+}
+
+% Exercise Box
+\newtcolorbox{exercise}[1][Exercise]{
+    colback=Red!5!White,
+    colframe=Red!70!Black,
+    fonttitle=\bfseries,
+    title={#1}
+}
+
+% --- Title Information ---
+\title{
+    \Huge\bfseries
+    Deep Learning in Scientific Computing \\
+    \large A Guided Introduction to PyTorch
+}
+\author{\large Professor Vectorex Gradiens}
+\date{\today}
+
+% =============================================
+% ===          DOCUMENT BEGINS            ===
+% =============================================
+\begin{document}
+
+\maketitle
+\thispagestyle{empty} % No page number on the title page
+
+\clearpage
+\tableofcontents
+\clearpage
+
+% --- Disclaimer Section ---
+\section*{Disclaimer}
+
+\textbf{Important Notice:} Apart from this paragraph, every single word in this document was written by a Large Language Model (Google Gemini). This document is intended as an aid for learning pyTorch, in particular for implementing the models presented in the course "AI in the sciences and Engineering" held at ETH Z\"{u}rich in Fall Semester 2025.\\
+The script is extremely likely to contain errors, so use it with care, and knowing that this isn't revisioned or approved by anybody who knows this subject.  \textit{Giovanni Guidarini}
+
+
+\clearpage
+
+% --- Professor's Introduction ---
+\section*{A Note to My Student}
+
+My dear student,
+
+Welcome. It is a distinct pleasure to guide you on this journey. You are already embedded in the world of scientific computing, a field of precision, rigor, and computational elegance. You will find that deep learning is not so different. At its heart, it is a powerful form of high-dimensional function approximation, built on the familiar foundations of linear algebra and calculus. The "magic" is simply that we have found a way to make these function approximators (\textit{neural networks}) trainable on a massive scale.
+
+Your lack of PyTorch experience is not a hindrance; it is an opportunity. You arrive with no bad habits. We will build your knowledge from the ground up, with the same care one takes in formulating a proof or designing a robust simulation. PyTorch is our "language" for this. It is expressive, powerful, and, once you are fluent, a genuine joy to use.
+
+This document is the first in a series. We will walk, then run. We start with the fundamental atom of this universe: the \texttt{torch.Tensor}. We will then explore the "soul" of PyTorch, its automatic differentiation engine (\texttt{autograd}). From there, we will construct our first simple models, graduate to convolutional and recurrent networks, and, finally, assemble the magnificent architecture that is the Transformer.
+
+Treat this not just as a technical exercise, but as an art. The code we write, like the \LaTeX{} that renders this page, can and should be clean, precise, and beautiful.
+
+Let us begin.
+
+\part{The Foundations of PyTorch}
+
+\section{Module 1: The \texttt{torch.Tensor}}
+
+\subsection{Introduction}
+Everything in PyTorch, from your input data (a simulation mesh, a time-series, an image) to the parameters of your neural network (the "weights" and "biases"), is represented as a \textbf{tensor}.
+
+If you have used NumPy, you are already familiar with the core concept: the \texttt{ndarray}. A PyTorch tensor is, at its core, the same thing—a multi-dimensional array. So why not just use NumPy?
+
+Two fundamental reasons:
+\begin{enumerate}
+    \item \textbf{GPU Acceleration:} PyTorch tensors can be effortlessly moved to a Graphics Processing Unit (GPU). This allows for \textit{massive} parallelization of computations, turning operations that would take hours on a CPU into minutes or seconds. For the scale of problems in scientific computing and deep learning, this is not optional; it is essential.
+    \item \textbf{Automatic Differentiation:} This is the engine of modern deep learning. PyTorch can automatically compute the gradient (the vector of partial derivatives) of any output with respect to any input. This mechanism, called \texttt{autograd}, allows us to perform \textit{gradient descent} to "learn" our model's parameters. We will dedicate all of Module 2 to this concept.
+\end{enumerate}
+
+\subsection{Theory: A Rigorous Definition}
+
+\begin{definition}
+\textbf{Tensor} -- A \textbf{tensor} is a multi-dimensional array of numerical values. It is a generalization of scalars (0D tensor), vectors (1D tensor), and matrices (2D tensor) to an arbitrary number of dimensions.
+
+In PyTorch, a \texttt{torch.Tensor} is an object that encapsulates this data and is characterized by three primary attributes:
+\begin{itemize}
+    \item \textbf{\texttt{shape} (or \texttt{size})}: A tuple of integers describing the size of each dimension. For example, a shape of \texttt{(3, 4, 5)} describes a 3D tensor.
+    \item \textbf{\texttt{dtype} (data type)}: The type of data the tensor holds, e.g., \texttt{torch.float32} (32-bit floating point, the default for ML) or \texttt{torch.float64} (double precision, common in SciComp).
+    \item \textbf{\texttt{device}}: The memory where the tensor is stored, e.g., \texttt{'cpu'} or \texttt{'cuda:0'} (for the first available NVIDIA GPU).
+\end{itemize}
+The number of dimensions is known as the \textbf{rank} of the tensor.
+\end{definition}
+
+\begin{center}
+    % A placeholder for a visual aid.
+    \includegraphics[width=0.8\textwidth]{tensor_visualization.jpg}
+    \captionof{figure}{Visualizing Tensors: A 0D scalar, a 1D vector, a 2D matrix, and a 3D tensor.}
+\end{center}
+
+\subsection{Core PyTorch Commands for Module 1}
+
+Here are the essential commands you will need to master for tensor manipulation.
+
+\subsubsection{Tensor Creation}
+
+\begin{pytorchcmd}
+\textbf{\texttt{torch.tensor(data)}} -- Creates a tensor from existing Python data (like a list or NumPy array). PyTorch infers the \texttt{dtype}.
+\begin{lstlisting}
+# From a Python list
+a = torch.tensor([[1, 2], [3, 4]])
+
+# Specifically setting dtype (good for SciComp)
+b = torch.tensor([1.0, 2.0], dtype=torch.float64)
+\end{lstlisting}
+\end{pytorchcmd}
+
+\begin{pytorchcmd}
+\textbf{\texttt{torch.zeros(shape)}, \texttt{torch.ones(shape)}} -- Creates a tensor of a given \texttt{shape} filled entirely with 0s or 1s.
+\begin{lstlisting}
+# A 3x3 matrix of zeros
+m_zeros = torch.zeros((3, 3))
+
+# A 2x4x3 tensor of ones
+t_ones = torch.ones((2, 4, 3))
+\end{lstlisting}
+\end{pytorchcmd}
+
+\begin{pytorchcmd}
+\textbf{\texttt{torch.rand(shape)}, \texttt{torch.randn(shape)}} -- Creates a tensor of a given \texttt{shape} with random numbers.
+\begin{itemize}
+    \item \texttt{rand}: Uniform distribution on $[0, 1)$.
+    \item \texttt{randn}: Standard normal (Gaussian) distribution with mean 0 and variance 1. This is \textit{extremely} common for initializing neural network weights.
+\end{itemize}
+\begin{lstlisting}
+# 5x2 tensor, standard normal distribution
+weights = torch.randn((5, 2))
+\end{lstlisting}
+\end{pytorchcmd}
+
+\begin{profnote}
+You will also see \texttt{torch.zeros\_like(input)} and \texttt{torch.rand\_like(input)}. These are excellent helper functions that create a new tensor with the \textit{same shape, dtype, and device} as an existing \texttt{input} tensor. This avoids many common bugs.
+\end{profnote}
+
+\subsubsection{Tensor Attributes and Device Management}
+
+\begin{pytorchcmd}
+\textbf{\texttt{T.shape}, \texttt{T.dtype}, \texttt{T.device}} -- These are not functions, but \textit{attributes} you access to inspect your tensor.
+\begin{lstlisting}
+T = torch.rand((4, 2))
+print(T.shape)    # Output: torch.Size([4, 2])
+print(T.dtype)    # Output: torch.float32
+print(T.device)   # Output: cpu
+\end{lstlisting}
+\end{pytorchcmd}
+
+\begin{pytorchcmd}
+\textbf{\texttt{T.to(device)}} -- This is how you move a tensor between devices (e.g., from CPU to GPU). \textbf{This is a critical operation.} Computations can only happen between tensors that live on the \textit{same device}.
+\begin{lstlisting}
+# Check if a GPU is available
+if torch.cuda.is_available():
+    device = torch.device('cuda')
+    print('GPU is available!')
+else:
+    device = torch.device('cpu')
+    print('GPU not found, using CPU.')
+
+# Create a tensor on the CPU
+T_cpu = torch.randn((10, 10))
+
+# Move it to the GPU
+T_gpu = T_cpu.to(device)
+
+# T_cpu is NOT modified. .to() returns a NEW tensor.
+# This is a common pattern.
+print(T_cpu.device)  # 'cpu'
+print(T_gpu.device)  # 'cuda:0' (if available)
+\end{lstlisting}
+\end{pytorchcmd}
+
+
+\subsubsection{Tensor Operations}
+
+\begin{profnote}
+\textbf{Element-wise vs. Matrix Operations} -- This is the single most common point of confusion for new students.
+\begin{itemize}
+    \item \textbf{Element-wise} (Hadamard product): \texttt{A * B} or \texttt{torch.mul(A, B)}. This multiplies corresponding elements. \texttt{A} and \texttt{B} must have the same shape (or be "broadcastable").
+    \item \textbf{Matrix Multiplication}: \texttt{A @ B} or \texttt{torch.matmul(A, B)}. This performs standard matrix multiplication. The inner dimensions must align (e.g., $(m, k) @ (k, n) \rightarrow (m, n)$).
+\end{itemize}
+In deep learning, we use \textbf{both} all the time. Be precise!
+\end{profnote}
+
+\begin{pytorchcmd}
+\textbf{\texttt{A @ B} or \texttt{torch.matmul(A, B)}} -- Performs matrix multiplication (or more generally, tensor dot products).
+\begin{lstlisting}
+A = torch.randn((5, 3))
+B = torch.randn((3, 4))
+C = A @ B
+print(C.shape) # Output: torch.Size([5, 4])
+\end{lstlisting}
+\end{pytorchcmd}
+
+\begin{pytorchcmd}
+\textbf{Broadcasting} -- Broadcasting is a powerful mechanism that allows PyTorch to perform operations on tensors of different shapes. The "smaller" tensor is "broadcast" (expanded) to match the shape of the "larger" one.
+
+\textbf{Rule:} Two tensors are "broadcastable" if for each dimension (starting from the trailing dimension), the dimension sizes are either equal, one of them is 1, or one of them does not exist.
+\begin{lstlisting}
+# Example: Adding a bias vector to a matrix
+M = torch.rand((4, 3))  # Shape (4, 3)
+v = torch.rand((3,))    # Shape (3,) or (1, 3)
+# v is broadcast to shape (4, 3)
+# by "copying" its content 4 times vertically.
+R = M + v
+print(R.shape) # Output: torch.Size([4, 3])
+\end{lstlisting}
+\end{pytorchcmd}
+
+\subsubsection{Indexing and Reshaping}
+
+\begin{pytorchcmd}
+\textbf{Indexing} -- This works exactly like NumPy. You use standard \texttt{[]} notation and \texttt{:} for slices.
+\begin{lstlisting}
+T = torch.rand((4, 3, 2)) # 4 "matrices" of 3x2
+
+# Get the first matrix
+m0 = T[0]  # Shape: (3, 2)
+
+# Get the second row from all matrices
+rows = T[:, 1, :] # Shape: (4, 2)
+
+# Get the last column from the last matrix
+col = T[-1, :, -1] # Shape: (3,)
+\end{lstlisting}
+\end{pytorchcmd}
+
+\begin{pytorchcmd}
+\textbf{\texttt{T.reshape(shape)} or \texttt{T.view(shape)}} -- This is the "plumbing" of deep learning. You are constantly changing the shape of your tensors to fit the next layer of your network. \texttt{reshape} changes the shape without changing the data. The new shape must have the same total number of elements.
+\begin{lstlisting}
+A = torch.arange(1, 13) # Vector [1, 2, ..., 12]
+print(A.shape) # torch.Size([12])
+
+# Reshape it
+B = A.reshape((3, 4))
+# B is now:
+# [[ 1,  2,  3,  4],
+#  [ 5,  6,  7,  8],
+#  [ 9, 10, 11, 12]]
+
+# -1 tells PyTorch to infer the dimension
+C = A.reshape((2, -1)) # Shape: (2, 6)
+\end{lstlisting}
+\end{pytorchcmd}
+
+\begin{profnote}
+\textbf{\texttt{view} vs. \texttt{reshape}} -- You will see both. \texttt{T.view()} creates a tensor that \textit{shares the same underlying memory} as \texttt{T}. \texttt{T.reshape()} \textit{may} do this, but may also return a copy if the memory layout isn't compatible.
+My advice: Start with \texttt{.reshape()}. It's more flexible and safer.
+\end{profnote}
+\begin{pytorchcmd}
+\textbf{\texttt{T.unsqueeze(dim)} and \texttt{T.squeeze(dim)}} -- This is an indispensable tool for adding or removing dimensions of size 1. This is most often used to add a "batch" dimension to a single data sample.
+\begin{lstlisting}
+# A 1D vector (e.g., a single data sample)
+v = torch.rand(10) # Shape (10,)
+
+# NN models expect a "batch" of data.
+# We need to add a batch dimension of size 1.
+# We want shape (1, 10)
+v_batch = v.unsqueeze(0) # Add a new dim at index 0
+print(v_batch.shape) # Output: torch.Size([1, 10])
+
+# To remove it, we "squeeze"
+v_original = v_batch.squeeze(0)
+print(v_original.shape) # Output: torch.Size([10])
+\end{lstlisting}
+\end{pytorchcmd}
+
+
+\clearpage
+\section{Module 1: Exercises}
+Now, it is time to practice. Open your Python environment (a Jupyter notebook is excellent for this). After \texttt{import torch}, complete the following challenges. Do not look at the answers until you have tried.
+
+\begin{exercise}
+\textbf{Creation and Attributes}
+\begin{enumerate}
+    \item Create a 2D tensor (a matrix) from the following Python list: \texttt{[[1, 5, 9], [2, 6, 10]]}.
+    \item Print its \texttt{shape}, \texttt{dtype}, and \texttt{device}.
+    \item Create a 3D tensor of shape \texttt{(4, 2, 5)} filled with random numbers from a standard normal distribution.
+    \item Create another tensor with the \textit{exact same shape} as the one from step 3, but fill it with ones, and ensure its data type is \texttt{torch.float64} (double precision).
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}
+\textbf{Operations and Broadcasting}
+\begin{enumerate}
+    \item Create a random matrix \texttt{A} of shape \texttt{(5, 3)}.
+    \item Create a random matrix \texttt{B} of shape \texttt{(3, 7)}.
+    \item Compute the matrix product of \texttt{A} and \texttt{B}, storing the result in \texttt{C}. What is the shape of \texttt{C}?
+    \item Create a random matrix \texttt{D} of shape \texttt{(5, 3)}.
+    \item Compute the \textit{element-wise} product of \texttt{A} and \texttt{D}, storing the result in \texttt{E}. What is the shape of \texttt{E}?
+    \item Create a 1D tensor (vector) \texttt{v} of shape \texttt{(7,)}.
+    \item Add \texttt{v} to the matrix \texttt{C} from step 3. What broadcasting rule makes this possible?
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}
+\textbf{Indexing and Slicing}
+\begin{enumerate}
+    \item Create a 3D tensor \texttt{T} of shape \texttt{(5, 4, 3)} filled with integers from 0 up to (but not including) 60. (Hint: use \texttt{torch.arange()} and \texttt{.reshape()}).
+    \item Select and print the 2D matrix at index 2 (the third matrix). Its shape should be \texttt{(4, 3)}.
+    \item Select and print the vector at \texttt{T[0, 1, :]} (from the first matrix, the second row, all columns). Its shape should be \texttt{(3,)}.
+    \item Select and print all elements from all matrices, but only from the \textit{last column}. The resulting tensor should have a shape of \texttt{(5, 4)}.
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}
+\textbf{Reshaping and Device Transfer (Challenge)}
+\begin{enumerate}
+    \item Create a 1D tensor \texttt{x} with 100 elements.
+    \item Reshape \texttt{x} into a 2D tensor \texttt{x\_2d} of shape \texttt{(20, 5)}.
+    \item Now, "flatten" \texttt{x\_2d} back into a 1D tensor \texttt{x\_flat} using \texttt{x.reshape(-1)}. This \texttt{-1} trick is a vital shortcut.
+    \item Imagine \texttt{x\_2d} is a single image from a "batch". Add a "batch" dimension (size 1) at the beginning, so its shape becomes \texttt{(1, 20, 5)}. (Hint: \texttt{unsqueeze}).
+    \item Write a code block (using the \texttt{if torch.cuda.is\_available()} template) that defines your \texttt{device}.
+    \item Move your 3D tensor from step 4 to this \texttt{device}.
+    \item Print the \texttt{.device} attribute of your new tensor to confirm it worked.
+\end{enumerate}
+\end{exercise}
+
+\subsection*{Conclusion of Module 1}
+
+Well done. You have just mastered the single most important object in the PyTorch ecosystem. Every complex model, every simulation you run, every piece of data you process will be a \texttt{torch.Tensor}.
+
+Review these operations until they feel second nature. In our next session, we will uncover the "magic" that makes PyTorch a \textit{learning} library: \textbf{Autograd and the Computational Graph}. This is where we learn how to compute gradients automatically, the engine that powers all of modern deep learning.
+% === This content should be appended to your 'pytorch_course_part1.tex' file ===
+% ===         It follows directly after the end of Module 1             ===
+
+\part{The Engine of Learning}
+\section{Module 2: Autograd \& The Computational Graph}
+
+\subsection{Introduction}
+In Module 1, we built our "bricks": the \texttt{torch.Tensor}. Now, we learn how to make them "smart." We will explore the "soul" of PyTorch: its automatic differentiation engine, \texttt{autograd}.
+
+This is what separates a mere tensor library (like NumPy) from a deep learning framework. In scientific computing, you often must manually derive and implement your gradients to solve optimization problems. In deep learning, the problems are of such high dimensionality that this is utterly intractable.
+
+\texttt{autograd} solves this. It "listens" to your operations and, when you are done, it can automatically compute the gradient of your final output (e.g., an error value) with respect to \textit{any} tensor that was involved in the computation. This process is known as \textbf{backpropagation}.
+
+\subsection{Theory: A Rigorous Definition}
+
+\begin{definition}
+\textbf{The Computational Graph} -- PyTorch performs its magic by building a \textbf{Computational Graph} in real-time. This is a Directed Acyclic Graph (DAG) where:
+\begin{itemize}
+    \item \textbf{Leaf Nodes} are the tensors you create (e.g., your input data, or your model's weights).
+    \item \textbf{Intermediate Nodes} (or \texttt{grad\_fn} nodes) represent the operations you perform (e.g., \texttt{AddBackward0}, \texttt{MulBackward0}, \texttt{MatMulBackward0}).
+    \item \textbf{The Root Node} is your final output tensor (typically, a scalar "loss" value).
+\end{itemize}
+When you create a tensor, you can "flag" it with \texttt{requires\_grad=True}. This tells PyTorch: "I will eventually want to know the gradient of some future result with respect to \textit{this} tensor."
+\end{definition}
+
+When you call \texttt{loss.backward()}, PyTorch traverses this graph \textit{backwards} from the root (the loss). At each node, it applies the multivariate \textbf{chain rule} to compute the gradient and passes it down to the connected leaf nodes.
+
+Mathematically, if we have a loss $L$ computed from a weight $w$ via an intermediate variable $y$ (i.e., $y = f(w)$ and $L = g(y)$), the chain rule states:
+$$
+\frac{\partial L}{\partial w} = \frac{\partial L}{\partial y} \cdot \frac{\partial y}{\partial w}
+$$
+\texttt{autograd} simply applies this principle recursively, layer by layer, all the way back to the leaves.
+
+\subsection{Core PyTorch Commands for Module 2}
+
+\subsubsection{Tracking Gradients}
+
+\begin{pytorchcmd}
+\textbf{\texttt{T.requires\_grad\_()} or \texttt{requires\_grad=True}} -- This is the "on/off" switch for a tensor.
+\begin{lstlisting}
+# 1. At creation time
+# By default, model parameters (nn.Linear) have this True.
+# By default, raw data (torch.tensor) has this False.
+w = torch.randn((5, 2), requires_grad=True)
+
+# 2. In-place modification (note the trailing underscore)
+x = torch.randn((10, 5))
+x.requires_grad_() # Now x is tracked
+\end{lstlisting}
+\end{pytorchcmd}
+
+\begin{pytorchcmd}
+\textbf{\texttt{L.backward()}} -- This is the function that \textit{triggers} the gradient computation. It must be called on a \textbf{scalar} (0D tensor), which is why we almost always call it on the \texttt{loss}.
+\begin{lstlisting}
+# w, x are defined above and have requires_grad=True
+y = x @ w  # 'y' now has a grad_fn (MatMulBackward0)
+z = y.mean() # 'z' now has a grad_fn (MeanBackward0)
+
+# Triggers backpropagation from 'z'
+z.backward()
+\end{lstlisting}
+\end{pytorchcmd}
+
+\begin{pytorchcmd}
+\textbf{\texttt{T.grad}} -- After \texttt{.backward()} is called, the computed gradients are \textit{accumulated} in the \texttt{.grad} attribute of the leaf nodes.
+\begin{lstlisting}
+# Following the code above
+print(w.grad) # Prints a (5, 2) tensor: d(z)/d(w)
+print(x.grad) # Prints a (10, 5) tensor: d(z)/d(x)
+\end{lstlisting}
+\end{pytorchcmd}
+
+\begin{profnote}
+\textbf{CRITICAL:} Gradients \textit{accumulate} by default. When you run your next training step, you must \textbf{zero the gradients} first, otherwise you will be adding new gradients to old ones. This is a classic "gotcha".
+\end{profnote}
+
+\subsubsection{Clearing Gradients and Disabling Tracking}
+
+\begin{pytorchcmd}
+\textbf{\texttt{T.grad.zero\_()}} -- An in-place operation to reset the gradient of a tensor to zero.
+\begin{lstlisting}
+w.grad.zero_() # Resets the gradient for 'w'
+\end{lstlisting}
+\end{pytorchcmd}
+
+\begin{profnote}
+In practice, we will use an \texttt{optimizer} object that conveniently calls \texttt{.zero\_grad()} on \textit{all} model parameters at once. We will see this in Module 3.
+\end{profnote}
+
+\begin{pytorchcmd}
+\textbf{\texttt{with torch.no\_grad():}} -- This is a \textbf{context manager} that disables the \texttt{autograd} engine within its block. This is \textit{essential}. When you are evaluating your model (i.e., running "inference"), you are not training, so you do not need gradients. This context manager makes your code:
+\begin{itemize}
+    \item \textbf{Faster:} It avoids building the computational graph.
+    \item \textbf{Memory-efficient:} It doesn't store intermediate \texttt{grad\_fn} objects.
+\end{itemize}
+\begin{lstlisting}
+print(w.requires_grad) # True
+
+with torch.no_grad():
+    y_pred = x @ w
+    # y_pred has no grad_fn
+    # Calling y_pred.backward() here would fail!
+
+print(y_pred.requires_grad) # False
+\end{lstlisting}
+\end{pytorchcmd}
+
+\begin{pytorchcmd}
+\textbf{\texttt{T.detach()}} -- Creates a new tensor that shares the same data as \texttt{T} but is "detached" from the computational graph. It will never have a gradient computed for it.
+\begin{lstlisting}
+a = torch.randn(5, requires_grad=True)
+b = a.detach() # b shares data, but requires_grad=False
+\end{lstlisting}
+\end{pytorchcmd}
+
+
+\section{Module 2: Exercises}
+Your turn. These exercises are designed to build your intuition for how the graph works.
+
+\begin{exercise}
+\textbf{Scalar Backpropagation}
+\begin{enumerate}
+    \item Define three \textit{scalar} (0D) tensors, \texttt{a}, \texttt{w}, and \texttt{b}, with \texttt{requires\_grad=True}. Initialize them to some values (e.g., \texttt{a=2.0}, \texttt{w=3.0}, \texttt{b=4.0}).
+    \item Define the computation $y = w \cdot a + b$. (This is \texttt{y = w * a + b}).
+    \item Print the \texttt{.grad\_fn} attribute of \texttt{y}. What operation does it represent?
+    \item Now, define a final scalar "loss" $L = y^2$.
+    \item \textbf{On paper:} Manually compute the partial derivatives: $\frac{\partial L}{\partial w}$, $\frac{\partial L}{\partial a}$, and $\frac{\partial L}{\partial b}$. (Hint: $\frac{\partial L}{\partial w} = \frac{\partial L}{\partial y} \cdot \frac{\partial y}{\partial w}$).
+    \item In code, call \texttt{L.backward()}.
+    \item Print \texttt{w.grad}, \texttt{a.grad}, and \texttt{b.grad}. Do they match your manual calculations?
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}
+\textbf{Gradients of Matrix Operations}
+\begin{enumerate}
+    \item Define a random 2D tensor \texttt{X} of shape \texttt{(10, 3)} (our data).
+    \item Define a random 2D tensor \texttt{W} of shape \texttt{(3, 2)} (our weights), with \texttt{requires\_grad=True}.
+    \item Define a random 1D tensor \texttt{b} of shape \texttt{(2,)} (our bias), with \texttt{requires\_grad=True}.
+    \item Compute the model's prediction: \texttt{Y\_pred = X @ W + b}. (Broadcasting will handle \texttt{b}).
+    \item Create a "target" tensor \texttt{Y\_target = torch.ones\_like(Y\_pred)}.
+    \item Compute the Mean Squared Error (MSE) loss: $L = \frac{1}{N} \sum (Y_{pred} - Y_{target})^2$. (Hint: \texttt{loss = ((Y\_pred - Y\_target)**2).mean()}).
+    \item Call \texttt{.backward()} on the loss.
+    \item Print the \texttt{.shape} of \texttt{W.grad} and \texttt{b.grad}. Do they match the shapes of \texttt{W} and \texttt{b}? Why is this crucial?
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}
+\textbf{The \texttt{no\_grad} Context}
+\begin{enumerate}
+    \item Create a tensor \texttt{a} with \texttt{requires\_grad=True}.
+    \item Create a \texttt{for} loop that runs 10 times.
+    \item \textbf{Inside} the loop, wrap the following computation in a \texttt{with torch.no\_grad():} block:
+    \item Compute \texttt{b = a * 2}.
+    \item Check the \texttt{.requires\_grad} attribute of \texttt{b}. Is it \texttt{True} or \texttt{False}?
+    \item \textbf{Outside} the \texttt{with} block (but still in the loop), compute \texttt{c = a * 2}.
+    \item Check the \texttt{.requires\_grad} attribute of \texttt{c}. Is it \texttt{True} or \texttt{False}?
+    \item This exercise should demonstrate the power of the \texttt{no\_grad} context for "turning off" the graph.
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}
+\textbf{Gradient Accumulation} -- This is a critical concept.
+\begin{enumerate}
+    \item Create a weight tensor \texttt{w = torch.tensor([5.0], requires\_grad=True)}.
+    \item Compute $L_1 = (w * 2)^2$.
+    \item Call \texttt{L1.backward()}.
+    \item Print \texttt{w.grad}. (You should get 40.0, as $\frac{dL_1}{dw} = 2 \cdot (2w) \cdot 2 = 8w = 40$).
+    \item \textbf{Do not zero the gradient.}
+    \item Now, compute $L_2 = (w * 3)^2$.
+    \item Call \texttt{L2.backward()}.
+    \item Print \texttt{w.grad} again. What is the value? Is it 90.0? Or 130.0?
+    \item Now, explicitly call \texttt{w.grad.zero\_()}.
+    \item Re-run \texttt{L2.backward()} (just this call) and print \texttt{w.grad} a final time. What is it now?
+    \item You have just proven to yourself why \texttt{optimizer.zero\_grad()} is the first step in every training loop.
+\end{enumerate}
+\end{exercise}
+
+\clearpage
+\part{Building and Training Models}
+\section{Module 3: Your First Neural Network \& Training Loop}
+
+\subsection{Introduction}
+With Tensors (bricks) and Autograd (the physics) understood, we can finally build our "machine." In PyTorch, these machines are encapsulated in a beautiful abstraction: the \texttt{nn.Module}.
+
+We will also formalize the "training" process by introducing \textbf{loss functions} (to score our model) and \textbf{optimizers} (to update our model's parameters using the gradients).
+
+This module culminates in the \textbf{canonical PyTorch training loop}—a 5-step-process that is the foundation for training everything from a simple line-fitter to a massive Transformer.
+
+\subsection{Theory: A Rigorous Definition}
+
+\begin{definition}
+\textbf{\texttt{torch.nn.Module}} -- In PyTorch, a model is defined as a Python \texttt{class} that \textbf{inherits} from \texttt{torch.nn.Module}.
+This base class provides an enormous amount of functionality. Your only true responsibilities are:
+\begin{itemize}
+    \item \textbf{In \texttt{\_\_init\_\_(self)}:} Define your network's "layers" (which are themselves \texttt{nn.Module}s, like \texttt{nn.Linear}). When you assign an \texttt{nn.Module} as an attribute (e.g., \texttt{self.layer1 = ...}), it is \textit{automatically registered} as part of your model. Its parameters are tracked.
+    \item \textbf{In \texttt{forward(self, x)}:} Define the \textit{computation} of your model. You take the input \texttt{x} and pass it through your defined layers, returning the final output. The \texttt{autograd} engine automatically builds the computational graph based on this \texttt{forward} pass.
+\end{itemize}
+\end{definition}
+
+\begin{definition}
+\textbf{\texttt{nn.Linear(in\_features, out\_features)}} -- This is our first "layer" module. It applies a standard affine transformation to the input data.
+Given an input $x$ with shape $(N, \dots, \text{in\_features})$, it produces an output $y$ with shape $(N, \dots, \text{out\_features})$ by computing:
+$$
+y = xW^T + b
+$$
+The module automatically creates and manages its own parameters:
+\begin{itemize}
+    \item \texttt{weight} ($W$): A tensor of shape $(\text{out\_features}, \text{in\_features})$.
+    \item \texttt{bias} ($b$): A tensor of shape $(\text{out\_features})$.
+\end{itemize}
+Both \texttt{weight} and \texttt{bias} have \texttt{requires\_grad=True} by default.
+\end{definition}
+
+\begin{definition}
+\textbf{Loss Function (\texttt{nn.MSELoss})} -- A loss function (or "criterion") is a function that computes a scalar value measuring the "error" or "distance" between your model's \texttt{output} and the ground \texttt{target}. We call \texttt{.backward()} on this scalar.
+For example, the \textbf{Mean Squared Error (MSE)} loss is:
+$$
+L(y, \hat{y}) = \frac{1}{N} \sum_{i=1}^{N} (y_i - \hat{y}_i)^2
+$$
+In PyTorch, \texttt{criterion = nn.MSELoss()} creates an object that computes this for us.
+\end{definition}
+
+\begin{definition}
+\textbf{Optimizer (\texttt{torch.optim})} -- An optimizer is an object that implements a specific algorithm to update your model's parameters using their computed gradients (\texttt{T.grad}).
+The simplest is \textbf{Stochastic Gradient Descent (SGD)}. When we call \texttt{optimizer.step()}, it performs the following update for every parameter $w$ it manages:
+$$
+w_{new} \leftarrow w_{old} - \eta \cdot w_{old}.grad
+$$
+where $\eta$ (eta) is the \textbf{learning rate} (a hyperparameter you must set).
+\end{definition}
+
+\subsection{Core PyTorch Commands for Module 3}
+We will now use two new libraries. The imports are canonical:
+\begin{lstlisting}
+import torch.nn as nn
+import torch.optim as optim
+\end{lstlisting}
+
+\subsubsection{Defining the Model}
+\begin{pytorchcmd}
+\textbf{Defining an \texttt{nn.Module}} -- This is the standard boilerplate for a simple model.
+\begin{lstlisting}
+class MyLinearModel(nn.Module):
+    # 1. Initialization
+    def __init__(self, input_size, output_size):
+        # Call the parent class's init function first!
+        super(MyLinearModel, self).__init__()
+        
+        # Define our layer(s)
+        self.linear_layer = nn.Linear(input_size, output_size)
+    
+    # 2. The forward pass
+    def forward(self, x):
+        # Define the computation
+        # Here, we just pass the input through our one layer
+        return self.linear_layer(x)
+
+# --- Usage ---
+# Instantiate the model: 1 input feature, 1 output feature
+model = MyLinearModel(input_size=1, output_size=1)
+\end{lstlisting}
+\end{pytorchcmd}
+
+\begin{pytorchcmd}
+\textbf{\texttt{model.parameters()}} -- This is a helper method from \texttt{nn.Module} that returns an iterator over \textit{all} parameters (tensors with \texttt{requires\_grad=True}) that were registered in \texttt{\_\_init\_\_}.
+\begin{lstlisting}
+# You pass this to the optimizer
+list(model.parameters()) 
+# Will show two tensors: the 'weight' and 'bias' 
+# from self.linear_layer
+\end{lstlisting}
+\end{pytorchcmd}
+
+\subsubsection{The Training Loop}
+This is the most important pattern in all of PyTorch.
+
+\begin{pytorchcmd}
+\textbf{The Canonical 5-Step Training Loop} -- We combine the model, loss, and optimizer.
+\begin{lstlisting}
+# --- 1. Setup ---
+# (Assume 'model' is defined as above)
+# (Assume 'X_train' and 'y_train' are our data tensors)
+learning_rate = 0.01
+
+# Define our loss function
+criterion = nn.MSELoss() 
+
+# Define our optimizer, telling it
+# WHAT to optimize (model.parameters()) and
+# HOW to optimize (lr)
+optimizer = optim.SGD(model.parameters(), lr=learning_rate)
+
+# --- 2. Training Epochs ---
+num_epochs = 50
+for epoch in range(num_epochs):
+    # THE 5-STEP LOOP
+    
+    # 1. Forward Pass: Compute predictions
+    y_pred = model(X_train)
+    
+    # 2. Compute Loss
+    loss = criterion(y_pred, y_train)
+    
+    # 3. Zero Gradients
+    # (VERY IMPORTANT: reset from previous loop)
+    optimizer.zero_grad()
+    
+    # 4. Backward Pass: Compute gradients
+    loss.backward()
+    
+    # 5. Optimizer Step: Update weights
+    optimizer.step()
+    
+    if (epoch + 1) % 5 == 0:
+        # Print progress (formatting omitted for LaTeX compatibility)
+        print("Epoch", epoch+1, "/", num_epochs, "Loss:", loss.item())
+
+# After the loop, the model.parameters() have been "learned"
+\end{lstlisting}
+\end{pytorchcmd}
+
+\begin{profnote}
+Note: \texttt{loss.item()} is used to extract the scalar value of the loss (which is a 0D tensor) as a standard Python number. You use \texttt{.item()} for any 1-element tensor.
+\end{profnote}
+
+
+\section{Module 3: Exercises}
+Time to build and train. This is your first complete deep learning workflow.
+
+\begin{exercise}
+\textbf{Define a Multi-Layer Model} -- Your first task is to define the model class.
+\begin{enumerate}
+    \item \texttt{import torch.nn as nn}.
+    \item Define a new class called \texttt{SimpleNet} that inherits from \texttt{nn.Module}.
+    \item In the \texttt{\_\_init\_\_} function, define two \texttt{nn.Linear} layers:
+        \begin{itemize}
+            \item \texttt{self.layer1} should take 10 input features and produce 5 output features.
+            \item \texttt{self.layer2} should take 5 input features and produce 1 output feature.
+        \end{itemize}
+    \item In the \texttt{forward(self, x)} function, define the computation:
+        \begin{itemize}
+            \item Pass the input \texttt{x} through \texttt{self.layer1}.
+            \item (We will add activation functions in the next module. For now, just pass the output of layer 1 directly into layer 2).
+            \item Pass the result of that through \texttt{self.layer2}.
+            \item Return the final result.
+        \end{itemize}
+    \item Instantiate your model: \texttt{model = SimpleNet()}.
+    \item Use \texttt{print(model)} to see a summary of its structure.
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}
+\textbf{The Full Training Loop} -- This is the main event. We will perform linear regression to find the parameters of a known line.
+\begin{enumerate}
+    \item \textbf{Generate Data:}
+        \begin{itemize}
+            \item Create a "ground truth" weight $W_{true} = 5.0$ and bias $b_{true} = -2.0$.
+            \item Create a 1D tensor \texttt{X} of 100 points, e.g., \texttt{torch.randn(100, 1)}.
+            \item Create the "ground truth" \texttt{y} using the line equation, adding some Gaussian noise: \texttt{y = X * W\_true + b\_true + torch.randn(100, 1) * 0.1}.
+        \end{itemize}
+    \item \textbf{Setup Model:}
+        \begin{itemize}
+            \item Instantiate a linear model. You can use the \texttt{MyLinearModel(1, 1)} class from the example, or just use \texttt{model = nn.Linear(1, 1)} directly (since it's also an \texttt{nn.Module}!).
+        \end{itemize}
+    \item \textbf{Setup Optimizer and Loss:}
+        \begin{itemize}
+            \item Define a \texttt{learning\_rate = 0.01}.
+            \item Instantiate \texttt{criterion = nn.MSELoss()}.
+            \item Instantiate \texttt{optimizer = optim.SGD(model.parameters(), lr=learning\_rate)}.
+        \end{itemize}
+    \item \textbf{Write the Training Loop:}
+        \begin{itemize}
+            \item Write a \texttt{for} loop that runs for 100 \texttt{epochs}.
+            \item Inside the loop, implement the \textbf{5-step training process} exactly as shown in the \texttt{pytorchcmd} block.
+            \item Use \texttt{X} as your input and \texttt{y} as your target.
+            \item Add a print statement that prints the \texttt{loss.item()} every 10 epochs.
+        \end{itemize}
+    \item \textbf{Check Results:}
+        \begin{itemize}
+            \item After the loop finishes, inspect your learned parameters.
+            \item \texttt{model.weight} should be close to 5.0.
+            \item \texttt{model.bias} should be close to -2.0.
+            \item (Hint: The parameters are themselves tensors, access their values with \texttt{.item()} or \texttt{.data}).
+        \end{itemize}
+\end{enumerate}
+\end{exercise}
+
+\subsection*{Conclusion of Part 2}
+
+If you have completed these exercises, you have achieved something significant. You have gone from zero to building and training a complete neural network. You now understand the \textit{process} of deep learning in PyTorch.
+
+This 5-step loop is the "heartbeat" of everything we will do.
+
+In our next part, we will make our models more powerful by introducing \textbf{non-linear activation functions} (the "spark" that gives neural networks their power) and explore how to handle \textbf{batches} of data, which is essential for training on large-scale scientific datasets.
+
+Take your time. Master this. I shall be here when you are ready for Module 4.
+% === This content should be appended to your file, following Module 3 ===
+
+\clearpage
+\part{Deepening the Architecture}
+
+\section{Module 4: Non-Linearity \& The Data Pipeline}
+
+\subsection{Introduction}
+My dear student, reflect on the linear models of Module 3. If you stack two linear layers, say $y = (xW_1)W_2$, this is mathematically equivalent to $y = x(W_1 W_2) = xW_{new}$. No matter how deep you stack them, a sequence of linear layers remains a linear function.
+
+To approximate complex, non-linear phenomena (turbulence, wavefunctions, stock markets), we must inject \textbf{non-linearity}. We do this via \textbf{Activation Functions}.
+
+Simultaneously, we must address engineering. We cannot load terabytes of simulation data into RAM at once. We need a mechanism to load data "lazily" and in batches. PyTorch provides the \texttt{Dataset} and \texttt{DataLoader} for this exact purpose.
+
+\subsection{Theory: Activation Functions}
+
+\begin{definition}
+\textbf{The Activation Function} -- An activation function $\sigma(\cdot)$ is a non-linear function applied element-wise to the output of a layer. Our layer definition becomes:
+$$
+h = \sigma(xW^T + b)
+$$
+Common choices in scientific computing include:
+
+\textbf{1. ReLU (Rectified Linear Unit):}
+$$
+\text{ReLU}(x) = \max(0, x)
+$$
+The industry standard. It is computationally free and solves the "vanishing gradient" problem for positive values.
+
+\textbf{2. Tanh (Hyperbolic Tangent):}
+$$
+\text{Tanh}(x) = \frac{e^x - e^{-x}}{e^x + e^{-x}}
+$$
+Outputs values in $(-1, 1)$. This is often preferred in scientific computing (physics-informed neural networks) because it is smooth (differentiable everywhere) and centered around zero, unlike ReLU.
+\end{definition}
+
+\subsection{Theory: The Data Pipeline}
+
+\begin{definition}
+\textbf{\texttt{Dataset} and \texttt{DataLoader}} -- PyTorch separates the "what" from the "how" of data loading.
+
+\begin{itemize}
+    \item \textbf{\texttt{Dataset}:} A class that defines \textit{where} your data is and \textit{how to get a single item}. You must implement two magic methods:
+    \begin{itemize}
+        \item \texttt{\_\_len\_\_}: Returns the total size of the dataset.
+        \item \texttt{\_\_getitem\_\_}: Given an index $i$, returns the $i$-th sample (input and target).
+    \end{itemize}
+    
+    \item \textbf{\texttt{DataLoader}:} An iterator that handles the logistics. It takes a \texttt{Dataset} and automatically handles:
+    \begin{itemize}
+        \item \textbf{Batching:} Grouping $B$ samples into a single tensor.
+        \item \textbf{Shuffling:} Randomizing order (crucial for SGD).
+        \item \textbf{Parallelism:} Loading data using multiple CPU workers.
+    \end{itemize}
+\end{itemize}
+\end{definition}
+
+\subsection{Core PyTorch Commands for Module 4}
+
+\subsubsection{Activations}
+\begin{pytorchcmd}
+\textbf{\texttt{nn.ReLU()} and \texttt{nn.Tanh()}} -- These are \texttt{nn.Module}s, just like \texttt{nn.Linear}. You typically define them in \texttt{\_\_init\_\_} and call them in \texttt{forward}.
+\begin{lstlisting}
+class NeuralNet(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.layer1 = nn.Linear(10, 20)
+        self.act = nn.ReLU() # or nn.Tanh()
+        self.layer2 = nn.Linear(20, 1)
+        
+    def forward(self, x):
+        x = self.layer1(x)
+        x = self.act(x) # Apply non-linearity
+        x = self.layer2(x)
+        return x
+\end{lstlisting}
+\end{pytorchcmd}
+
+\subsubsection{Data Handling}
+\begin{pytorchcmd}
+\textbf{Custom \texttt{Dataset}}
+\begin{lstlisting}
+from torch.utils.data import Dataset, DataLoader
+
+class ScientificDataset(Dataset):
+    def __init__(self, x_tensor, y_tensor):
+        # Store the data (usually as tensors)
+        self.x = x_tensor
+        self.y = y_tensor
+        
+    def __len__(self):
+        # Return total number of samples
+        return len(self.x)
+        
+    def __getitem__(self, idx):
+        # Return tuple (input, target) for index idx
+        return self.x[idx], self.y[idx]
+\end{lstlisting}
+\end{pytorchcmd}
+
+\begin{pytorchcmd}
+\textbf{Using \texttt{DataLoader}} -- This modifies our training loop. Instead of passing the whole dataset at once, we iterate over the loader.
+\begin{lstlisting}
+# Create dataset and loader
+dataset = ScientificDataset(x_train, y_train)
+dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
+
+# New Training Loop Structure
+for epoch in range(num_epochs):
+    # Iterate over batches
+    for batch_x, batch_y in dataloader:
+        # 1. Forward
+        pred = model(batch_x)
+        # 2. Loss
+        loss = criterion(pred, batch_y)
+        # 3, 4, 5. Zero, Backward, Step
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+\end{lstlisting}
+\end{pytorchcmd}
+
+
+\section{Module 4: Exercises}
+
+\begin{exercise}
+\textbf{The Multi-Layer Perceptron (MLP)} -- We will upgrade our model from Module 3.
+\begin{enumerate}
+    \item Define a class \texttt{NonLinearNet}.
+    \item In \texttt{\_\_init\_\_}, define a structure with two hidden layers:
+    \begin{itemize}
+        \item Layer 1: Linear (input 1 $\to$ 20 features).
+        \item Activation: Tanh.
+        \item Layer 2: Linear (20 $\to$ 20 features).
+        \item Activation: Tanh.
+        \item Layer 3: Linear (20 $\to$ 1 output).
+    \end{itemize}
+    \item Implement the \texttt{forward} pass connecting these components.
+    \item \textbf{Question:} Why do we typically \textit{not} put an activation function after the very last layer for a regression problem?
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}
+\textbf{Implementing a Dataset}
+\begin{enumerate}
+    \item Create synthetic data: 
+    \texttt{X = torch.linspace(-10, 10, 1000).reshape(-1, 1)}
+    \texttt{y = torch.sin(X) + 0.1 * torch.randn\_like(X)}
+    \item Define a class \texttt{SineWaveDataset} inheriting from \texttt{torch.utils.data.Dataset}.
+    \item Implement \texttt{\_\_init\_\_}, \texttt{\_\_len\_\_}, and \texttt{\_\_getitem\_\_} to handle this data.
+    \item Instantiate your dataset and verify it works by printing \texttt{len(dataset)} and \texttt{dataset[0]}.
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}
+\textbf{Mini-Batch Training Loop} -- Combine the previous two exercises.
+\begin{enumerate}
+    \item Instantiate your \texttt{SineWaveDataset}.
+    \item Create a \texttt{DataLoader} with \texttt{batch\_size=64} and \texttt{shuffle=True}.
+    \item Instantiate your \texttt{NonLinearNet}, an optimizer (SGD or Adam), and MSELoss.
+    \item Write the training loop. \textbf{Crucial Change:} You now need a nested loop. The outer loop counts epochs; the inner loop iterates through the \texttt{dataloader}.
+    \item Train for 50 epochs.
+    \item (Optional) Use \texttt{matplotlib} to plot your model's predictions against the noisy data. The model should capture the sine wave curve, which a linear model could never do.
+\end{enumerate}
+\end{exercise}
+
+% === REPLACE PREVIOUS MODULE 5 WITH THIS COMPLETE REWRITE ===
+
+\clearpage
+\part{The Topology of Data}
+
+\section{Module 5: Convolutional Neural Networks (CNNs)}
+
+\subsection{Introduction: From Vectors to Manifolds}
+In scientific computing, structure is information. A fluid velocity field, a stress tensor on a plate, or a microscope image all possess \textbf{spatial topology}. Point $(i, j)$ is physically correlated with point $(i+1, j)$.
+
+Up to this point, we have used Dense Layers (\texttt{nn.Linear}). To feed a $28 \times 28$ grid into a Dense Layer, we had to flatten it into a vector of size 784. This is destructive. It throws away the 2D topology. The network has to "re-learn" that pixel 1 is next to pixel 28.
+
+The Convolutional Neural Network (CNN) preserves this topology. It processes data locally using a \textbf{Kernel} (or filter). For the scientific computing student, the analogy is exact: \textbf{A Convolutional Layer is a learnable Stencil operation}.
+
+\subsection{Theory: The Building Blocks}
+
+\begin{definition}[The Tensor Image]
+In PyTorch CNNs, data is always a 4-dimensional tensor:
+$$ (N, C, H, W) $$
+\begin{itemize}
+    \item \textbf{N (Batch Size):} Number of samples.
+    \item \textbf{C (Channels):} The depth of the data.
+    \begin{itemize}
+        \item Input Layer: RGB image = 3 channels. Scalar field (temp) = 1 channel.
+        \item Hidden Layers: The number of "features" extracted at that spatial location.
+    \end{itemize}
+    \item \textbf{H, W (Height, Width):} The spatial dimensions.
+\end{itemize}
+\end{definition}
+
+\subsubsection{1. The Convolution Operation (\texttt{Conv2d})}
+The core operation is the sliding dot product. We define a small matrix of weights called a \textbf{Kernel} (e.g., $3 \times 3$). We slide this kernel over every pixel of the input. At each position, we perform an element-wise multiplication and sum the result.
+
+\textbf{Key Hyperparameters:}
+\begin{enumerate}
+    \item \textbf{Kernel Size ($k$):} The size of the window. $3 \times 3$ is the standard. Larger kernels ($5 \times 5, 7 \times 7$) look at a wider context but are more expensive.
+    \item \textbf{Stride ($s$):} The step size.
+    \begin{itemize}
+        \item $s=1$: We slide pixel by pixel. Preserves resolution (mostly).
+        \item $s=2$: We skip every other pixel. This \textbf{halves} the spatial dimension (Downsampling).
+    \end{itemize}
+    \item \textbf{Padding ($p$):} How we handle boundaries.
+    \begin{itemize}
+        \item \textit{Valid Padding ($p=0$):} We only compute where the kernel fits inside the image. The image shrinks.
+        \item \textit{Same Padding:} We pad the border with zeros so the Output Size = Input Size (when stride=1).
+    \end{itemize}
+\end{enumerate}
+
+
+
+\begin{profnote}[The "Ghost Cells" of Deep Learning]
+In Finite Volume Methods, you add ghost cells to boundaries to apply stencils. \textbf{Padding} is exactly the same concept. In CNNs, we typically use "Zero Padding" (Dirichlet BCs with value 0), but PyTorch also supports "Reflection Padding" (Neumann BCs), which is better for generative science tasks to avoid edge artifacts.
+\end{profnote}
+
+\subsubsection{2. Pooling Layers}
+Pooling reduces the spatial resolution ($H, W$) while keeping the depth ($C$) constant.
+\begin{itemize}
+    \item \textbf{Max Pooling:} Selects the maximum value in a window (e.g., $2 \times 2$).
+    \item \textbf{Average Pooling:} Calculates the mean.
+\end{itemize}
+\textbf{Why?} It provides \textit{invariance}. If a feature moves slightly, the max value in the window remains the same. It also reduces computational cost by shrinking the grid.
+
+\subsubsection{3. Batch Normalization (BN)}
+Training deep CNNs is notoriously unstable due to "Internal Covariate Shift"—the distribution of inputs to layer $L$ changes as the parameters of layer $L-1$ change.
+Batch Normalization fixes this by normalizing the activations \textit{during training}:
+$$ \hat{x} = \frac{x - \mu_{batch}}{\sigma_{batch}} \cdot \gamma + \beta $$
+Where $\gamma$ and $\beta$ are learnable parameters. This forces the data to stay centered and scaled.
+
+\subsection{Professor's Design Patterns: How to Architect}
+Knowing the tools is not enough; you must know how to arrange them. Here are the heuristics of the trade:
+
+\begin{itemize}
+    \item \textbf{The VGG Block:} Do not use large kernels like $5 \times 5$ or $7 \times 7$. Instead, stack two $3 \times 3$ layers.
+    $$ \text{Conv}(3 \times 3) \to \text{ReLU} \to \text{Conv}(3 \times 3) \to \text{ReLU} $$
+    This covers the same receptive field as a $5 \times 5$ but with fewer parameters and more non-linearity.
+    
+    \item \textbf{The Pyramid Principle:} As you go deeper into the network, the spatial resolution ($H, W$) should \textit{decrease}, and the number of channels ($C$) should \textit{increase}.
+    $$ \text{Resolution: } 256 \to 128 \to 64 \to 32 $$
+    $$ \text{Channels: } 3 \to 64 \to 128 \to 256 $$
+    \textit{Rationale:} We trade spatial precision for semantic complexity.
+    
+    \item \textbf{Order of Operations:} The canonical order for a single layer block is:
+    $$ \text{Conv2d} \longrightarrow \text{BatchNorm} \longrightarrow \text{ReLU} $$
+    
+    \item \textbf{Downsampling:} Modern architectures often avoid MaxPool in favor of using \texttt{Conv2d} with \texttt{stride=2}. This lets the network \textit{learn} how to downsample rather than just taking the max.
+\end{itemize}
+
+\subsection{The PyTorch Syntax}
+
+\begin{pytorchcmd}[\texttt{nn.Conv2d}]
+\begin{lstlisting}
+# nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding)
+
+# Example: Input is RGB (3), we want 64 feature maps.
+# We use 3x3 kernel, stride 1, and padding 1 to keep size constant.
+layer = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1)
+\end{lstlisting}
+\end{pytorchcmd}
+
+\begin{pytorchcmd}[\texttt{nn.MaxPool2d}]
+\begin{lstlisting}
+# Halves the dimension (H/2, W/2)
+pool = nn.MaxPool2d(kernel_size=2, stride=2)
+\end{lstlisting}
+\end{pytorchcmd}
+
+\begin{pytorchcmd}[\texttt{nn.BatchNorm2d}]
+\begin{lstlisting}
+# Argument must match the OUTPUT channels of the previous conv
+bn = nn.BatchNorm2d(64) 
+\end{lstlisting}
+\end{pytorchcmd}
+
+\begin{pytorchcmd}[Calculating Output Dimensions]
+You must memorize this formula. Failure to do so results in shape mismatch errors.
+$$ H_{out} = \left\lfloor \frac{H_{in} + 2p - k}{s} + 1 \right\rfloor $$
+\end{pytorchcmd}
+
+\begin{pytorchcmd}[\texttt{nn.Sequential}]
+A cleaner way to stack layers, especially for repeated blocks (like Conv-BN-ReLU).
+\begin{lstlisting}
+self.block = nn.Sequential(
+    nn.Conv2d(1, 32, 3, padding=1),
+    nn.BatchNorm2d(32),
+    nn.ReLU(),
+    nn.MaxPool2d(2)
+)
+\end{lstlisting}
+\end{pytorchcmd}
+
+\section{Module 5: Exercises}
+
+\begin{exercise}[Exercise 5.1: The Arithmetic of Geometry]
+\textit{Do this with pen and paper. Do not skip.}
+Assume an input tensor of shape \texttt{(Batch=1, Channels=1, Height=32, Width=32)}. Calculate the output shape $(C, H, W)$ after each layer sequentially:
+\begin{enumerate}
+    \item \texttt{Conv2d(1, 16, kernel=5, stride=1, padding=0)}
+    \item \texttt{MaxPool2d(kernel=2, stride=2)}
+    \item \texttt{Conv2d(16, 32, kernel=3, stride=1, padding=1)}
+    \item \texttt{Conv2d(32, 32, kernel=3, stride=2, padding=1)}
+    \item \texttt{Flatten()} (What is the size of the resulting vector?)
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[Exercise 5.2: The "Mechanic" - Manual Weights]
+We will inspect the "guts" of a CNN. We will manually set the weights to create an Edge Detector (Sobel Filter).
+\begin{enumerate}
+    \item Create a dummy "image" tensor: A $10 \times 10$ matrix of zeros, with a vertical strip of ones (value 5.0) in the middle (columns 4 and 5). Reshape to $(1, 1, 10, 10)$.
+    \item Define a \texttt{Conv2d(1, 1, kernel\_size=3, stride=1, padding=0, bias=False)}.
+    \item Access the weights via \texttt{conv.weight.data}. This will be shape $(1, 1, 3, 3)$.
+    \item Overwrite the weights with the Vertical Edge Kernel:
+    $$ \begin{bmatrix} -1 & 0 & 1 \\ -2 & 0 & 2 \\ -1 & 0 & 1 \end{bmatrix} $$
+    \item Pass the image through the layer.
+    \item Print the output. You should see high positive values on the left of the strip (light to dark transition) and high negative values on the right (dark to light).
+    \item \textbf{Reflection:} This is all a CNN does. It learns thousands of these little filters to detect edges, then shapes, then objects.
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[Exercise 5.3: The "Architect" - VGG Construction]
+Create a class \texttt{MyVGG} that strictly follows this architecture. Do not worry about training yet; just ensure the \texttt{forward} pass works without crashing.
+\textbf{Architecture:}
+\begin{itemize}
+    \item Input: $1 \times 28 \times 28$ (MNIST size)
+    \item \textbf{Block 1:} Conv(1$\to$32, k=3, p=1) $\to$ BN $\to$ ReLU $\to$ MaxPool(2)
+    \item \textbf{Block 2:} Conv(32$\to$64, k=3, p=1) $\to$ BN $\to$ ReLU $\to$ MaxPool(2)
+    \item \textbf{Block 3:} Conv(64$\to$128, k=3, p=1) $\to$ BN $\to$ ReLU $\to$ MaxPool(2)
+    \item \textbf{Classifier:} Flatten $\to$ Linear($\dots \to 10$).
+\end{itemize}
+\textbf{Task:} Calculate the input size for the Linear layer. (Hint: Trace the spatial dimension 28 $\to$ 14 $\to$ 7 $\to$ 3). Pass a random tensor through it to verify.
+\end{exercise}
+
+\begin{exercise}[Exercise 5.4: The "Experiment" - Real World Training]
+Now we put it all together. We will train on real data: MNIST (handwritten digits).
+\begin{enumerate}
+    \item \textbf{Data Loading:} Use \texttt{torchvision} to load data (standard procedure in PyTorch).
+    \begin{lstlisting}
+    from torchvision import datasets, transforms
+    transform = transforms.ToTensor()
+    train_data = datasets.MNIST(root='./data', train=True, download=True, transform=transform)
+    train_loader = torch.utils.data.DataLoader(train_data, batch_size=64, shuffle=True)
+    \end{lstlisting}
+    \item Instantiate your \texttt{MyVGG} model from Exercise 5.3.
+    \item Define Optimizer (\texttt{Adam}, lr=0.001) and Loss (\texttt{CrossEntropyLoss}).
+    \item \textbf{The Loop:} Write the standard training loop (Forward $\to$ Loss $\to$ ZeroGrad $\to$ Backward $\to$ Step).
+    \item Train for 5 epochs.
+    \item Calculate accuracy on the training set. It should easily exceed 98\%.
+    \item \textbf{Challenge:} Add \texttt{model.train()} at the start of the loop and \texttt{model.eval()} during inference. This is crucial because Batch Norm behaves differently in training vs. testing!
+\end{enumerate}
+\end{exercise}
+
+\subsection*{Conclusion of Expanded Module 5}
+You have now moved beyond the "black box" view of CNNs. You understand them as hierarchical feature extractors and learnable stencil operators. You can calculate their dimensions precisely, and you can manipulate them for both classification (reduction) and generation (reconstruction).% === Append this segment to your file, following Module 5 ===
+
+\clearpage
+% \part{The State of the Art: Sequences and Attention}
+
+% \section{Module 6: Recurrent Neural Networks (RNNs)}
+
+% \subsection{Introduction}
+% In Module 5, we dealt with spatial data (grids). But what if our data is sequential? Time-series simulations, DNA strands, or natural language. In these cases, the "order" matters. $A \to B$ is different from $B \to A$.
+
+% Standard networks have no memory. To process a sequence, we need a network that maintains a "hidden state"—a memory vector that changes as it reads the sequence step-by-step. This is the Recurrent Neural Network (RNN).
+
+% \subsection{Theory: The Recurrence Relation}
+
+% \begin{definition}
+% \textbf{The RNN Cell} -- Let $x_t$ be the input at time step $t$, and $h_t$ be the hidden state (memory) at time $t$. The RNN updates its memory according to:
+% $$
+% h_t = \tanh(W_{ih} x_t + b_{ih} + W_{hh} h_{t-1} + b_{hh})
+% $$
+% where:
+% \begin{itemize}
+%     \item $W_{ih}$ transforms the current input.
+%     \item $W_{hh}$ transforms the \textit{previous} hidden state (the memory).
+%     \item $\tanh$ squashes values between -1 and 1 to keep gradients stable.
+% \end{itemize}
+% The output $y_t$ is usually computed from the new state $h_t$.
+% \end{definition}
+
+% \begin{profnote}
+% \textbf{LSTM and GRU} -- The vanilla RNN suffers from the "Vanishing Gradient" problem over long sequences. In practice, we almost always use the \textbf{LSTM (Long Short-Term Memory)} or \textbf{GRU (Gated Recurrent Unit)}. These introduce "gates" that allow the network to decide what to forget and what to keep.
+% \end{profnote}
+
+% \subsection{Core PyTorch Commands for Module 6}
+
+% \begin{pytorchcmd}
+% \textbf{\texttt{nn.RNN}, \texttt{nn.LSTM}, \texttt{nn.GRU}}
+% \begin{lstlisting}
+% # Input_size: Features per time step (e.g., 1 for temp, 3 for RGB)
+% # Hidden_size: Size of the memory vector
+% # Batch_first=True: Tensors are (Batch, Seq_Len, Features)
+% rnn = nn.LSTM(input_size=10, hidden_size=20, batch_first=True)
+
+% # Input: Batch of 5 sequences, each length 100, with 10 features
+% x = torch.randn(5, 100, 10)
+
+% # Output, (hidden_n, cell_n)
+% output, (h_n, c_n) = rnn(x)
+
+% # output shape: (5, 100, 20) -> The state at every time step
+% # h_n shape: (1, 5, 20) -> The FINAL state (vector summary of the sequence)
+% \end{lstlisting}
+% \end{pytorchcmd}
+
+% \section{Module 6: Exercises}
+
+% \begin{exercise}
+% \textbf{Sequence Prediction (Many-to-One)} -- We will train a model to predict the \textit{next} value in a sequence.
+% \begin{enumerate}
+%     \item \textbf{Data:} Generate 1000 sequences of length 20 from a sine wave.
+%     \begin{itemize}
+%         \item Input $X$: A window of 20 points ($t_0 \dots t_{19}$).
+%         \item Target $y$: The value at $t_{20}$.
+%     \end{itemize}
+%     \item \textbf{Model:} Define a class \texttt{RNNModel}.
+%     \begin{itemize}
+%         \item \texttt{self.rnn = nn.RNN(input\_size=1, hidden\_size=32, batch\_first=True)}
+%         \item \texttt{self.fc = nn.Linear(32, 1)}
+%     \end{itemize}
+%     \item \textbf{Forward:} 
+%     \begin{itemize}
+%         \item Pass $x$ to the RNN.
+%         \item \textbf{Critical Step:} Extract the \textit{last} time step from the output. (If \texttt{batch\_first=True}, this is \texttt{out[:, -1, :]}).
+%         \item Pass this last state to the linear layer.
+%     \end{itemize}
+%     \item Train with MSELoss.
+% \end{enumerate}
+% \end{exercise}
+
+
+% \clearpage
+% \section{Module 7: The Transformer \& Attention}
+
+% \subsection{Introduction}
+% We arrive at the summit. RNNs process data sequentially ($t_1$, then $t_2$, then $t_3$). This is slow and makes it hard to learn relationships between distant points ($t_1$ and $t_{1000}$).
+
+% The \textbf{Transformer} (introduced in "Attention Is All You Need", 2017) abandons recurrence. Instead, it uses \textbf{Attention} to look at the \textit{entire sequence at once}. It asks: "To understand $x_t$, which other parts of the sequence are relevant?"
+
+% \subsection{Theory: Self-Attention}
+
+% \begin{definition}
+% \textbf{Scaled Dot-Product Attention} -- For every element in a sequence, we produce three vectors: \textbf{Query ($Q$)}, \textbf{Key ($K$)}, and \textbf{Value ($V$)}.
+% The attention score describes how much "focus" the Query puts on the Key.
+% $$
+% \text{Attention}(Q, K, V) = \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)V
+% $$
+% \begin{itemize}
+%     \item $QK^T$: Computes similarity between the query and all keys.
+%     \item $\sqrt{d_k}$: A scaling factor to prevent exploding gradients.
+%     \item Softmax: Normalizes scores so they sum to 1 (a probability distribution).
+%     \item $\dots V$: We take a weighted sum of the Values based on these scores.
+% \end{itemize}
+% \end{definition}
+
+% \subsection{Core PyTorch Commands for Module 7}
+
+% \begin{pytorchcmd}
+% \textbf{\texttt{nn.MultiheadAttention}} -- The core block. It runs several attention mechanisms in parallel ("heads") and concatenates the results.
+% \begin{lstlisting}
+% # embed_dim: Size of input vectors
+% # num_heads: Number of parallel attention heads
+% self_attn = nn.MultiheadAttention(embed_dim=64, num_heads=4, batch_first=True)
+
+% # Input: (Batch, Seq_Len, Embed_Dim)
+% x = torch.randn(32, 10, 64)
+
+% # Self-attention: Q, K, and V are all x
+% attn_output, weights = self_attn(x, x, x)
+% \end{lstlisting}
+% \end{pytorchcmd}
+
+% \begin{pytorchcmd}
+% \textbf{\texttt{nn.TransformerEncoderLayer}} -- A complete Transformer block containing: Attention $\to$ Norm $\to$ FeedForward $\to$ Norm.
+% \begin{lstlisting}
+% encoder_layer = nn.TransformerEncoderLayer(d_model=64, nhead=4, batch_first=True)
+% src = torch.randn(32, 10, 64)
+% out = encoder_layer(src)
+% \end{lstlisting}
+% \end{pytorchcmd}
+
+% \section{Module 7: Exercises (The Capstone)}
+
+% \begin{exercise}
+% \textbf{Manual Attention Implementation} -- To truly understand the Transformer, you must build the engine yourself.
+% \begin{enumerate}
+%     \item Create three random tensors $Q, K, V$, all shape $(1, 5, 8)$ (Batch 1, Seq 5, Dim 8).
+%     \item Compute the dot products: \texttt{scores = Q @ K.transpose(-2, -1)}.
+%     \item Scale the scores by dividing by $\sqrt{8}$.
+%     \item Apply \texttt{torch.softmax(scores, dim=-1)}.
+%     \item Multiply by $V$: \texttt{output = scores @ V}.
+%     \item Print the output shape. It should be $(1, 5, 8)$.
+% \end{enumerate}
+% \end{exercise}
+
+% \begin{exercise}
+% \textbf{Building a Transformer Classifier} -- We will classify sequences (e.g., "is this signal increasing or decreasing?").
+% \begin{enumerate}
+%     \item \textbf{Data:} Create a dataset of sequences.
+%     \begin{itemize}
+%         \item Class 0: Random noise + upward trend.
+%         \item Class 1: Random noise + downward trend.
+%     \end{itemize}
+%     \item \textbf{Model Class \texttt{TransformerClassifier}:}
+%     \begin{itemize}
+%         \item \texttt{self.embedding}: A Linear layer to project input features (1) to \texttt{d\_model} (e.g., 32).
+%         \item \texttt{self.transformer\_block}: An \texttt{nn.TransformerEncoderLayer}.
+%         \item \texttt{self.fc}: A Linear layer (32 $\to$ 2 classes).
+%     \end{itemize}
+%     \item \textbf{Forward Pass:}
+%     \begin{itemize}
+%         \item Embed input: $(N, L, 1) \to (N, L, 32)$.
+%         \item \textbf{Positional Encoding:} (Simplified) Add a learnable parameter of shape $(1, L, 32)$ to the embedded input. Without this, the transformer doesn't know the order of data!
+%         \item Pass through Transformer Block.
+%         \item \textbf{Pooling:} Take the mean across the sequence dimension ($\to (N, 32)$) or take the first token.
+%         \item Pass through FC layer.
+%     \end{itemize}
+%     \item Train this model.
+% \end{enumerate}
+% \end{exercise}
+
+% \section*{Professor's Final Remarks}
+% My dear student,
+
+% If you have reached this point, compiled this document, and, most importantly, implemented these exercises, you are no longer a beginner.
+
+% You have traversed the landscape from the humble Tensor to the mighty Transformer. You understand the Computational Graph, the optimization loop, the necessity of non-linearity, the spatial power of CNNs, and the contextual brilliance of Attention.
+
+% You possess the tools. The world of scientific computing—solving differential equations with PINNs, folding proteins with AlphaFold architectures, modeling climate data—is now open to you.
+
+% Go forth and build beautiful things.
+
+% \textit{Prof. Vectorex Gradiens}
+% % === Append this segment to your file, following Module 7 ===
+
+% === REPLACE PREVIOUS PART VI WITH THIS COMPREHENSIVE REWRITE ===
+
+\clearpage
+\part{The Architecture of Time and Context}
+
+\section{Module 6: Recurrent Neural Networks (RNNs)}
+
+\subsection{Theory: The Problem of Sequence}
+Standard Feed-Forward networks (and CNNs) function on the assumption of \textbf{independence}. They assume that input $X_i$ is independent of input $X_{i+1}$. In scientific computing, this is rarely true. In a time-series simulation of a chaotic system, $X_t$ is strictly determined by $X_{t-1}$. In a DNA sequence, a base pair at position $i$ interacts with one at position $j$.
+
+To model this, we need \textbf{Memory}. We need a network that maintains an internal \textbf{Hidden State} ($h_t$) that acts as a summary of everything it has seen so far.
+
+\subsubsection{1. The Vanilla RNN: A Dynamical System}
+Mathematically, an RNN is a discrete-time dynamical system.
+Let $x_t \in \mathbb{R}^d$ be the input at time $t$.
+Let $h_t \in \mathbb{R}^h$ be the hidden state at time $t$.
+The update rule is:
+$$ h_t = \tanh(W_{xh} x_t + W_{hh} h_{t-1} + b) $$
+$$ y_t = W_{hy} h_t + b_y $$
+
+Here, $W_{hh}$ is the \textbf{Recurrent Weight Matrix}. It is applied over and over again. This is where the power and the danger lie.
+
+
+
+\subsubsection{2. The Vanishing Gradient Problem}
+Why do we rarely use vanilla RNNs? Consider the gradient of the loss at time $T$ with respect to the input at time $1$. By the Chain Rule, this involves multiplying the weight matrix $W_{hh}$ by itself $T-1$ times.
+$$ \frac{\partial L_T}{\partial h_1} \propto \prod_{k=2}^{T} W_{hh}^T \cdot \text{diag}(\tanh') $$
+If the largest eigenvalue of $W_{hh}$ is $< 1$, the gradient decays exponentially to zero ("Vanishes"). The network "forgets" inputs from long ago.
+If the largest eigenvalue is $> 1$, the gradient explodes.
+
+\subsubsection{3. The Solution: Gating (LSTM \& GRU)}
+To solve this, we introduce \textbf{Gating}. Gates are sigmoid-activated neurons that output values in $[0, 1]$, acting as "valves" for information flow.
+
+\textbf{The LSTM (Long Short-Term Memory) Cell:}
+The LSTM maintains \textit{two} states: the hidden state $h_t$ (short-term) and the \textbf{Cell State} $C_t$ (long-term). The update involves four distinct gates/operations:
+\begin{enumerate}
+    \item \textbf{Forget Gate ($f_t$):} "What percentage of the old cell state should we keep?"
+    \item \textbf{Input Gate ($i_t$):} "What percentage of the new candidate information should we add?"
+    \item \textbf{Candidate Cell ($\tilde{C}_t$):} The new information to be added.
+    \item \textbf{Output Gate ($o_t$):} "What part of the cell state should we reveal as the new hidden state?"
+\end{enumerate}
+
+The core magic is the Cell Update:
+$$ C_t = f_t \odot C_{t-1} + i_t \odot \tilde{C}_t $$
+Note the \textbf{addition} (+). In calculus, the derivative of a sum is 1. This allows gradients to flow backwards through time without decaying, creating an "information superhighway."
+
+
+
+\subsection{Module 6 Exercises: The Mechanics of Memory}
+
+\begin{exercise}[6.1: The "Watchmaker" - RNN from Scratch]
+You will implement a Vanilla RNN Cell using \textbf{only} \texttt{nn.Linear}.
+\begin{enumerate}
+    \item Define a class \texttt{MyRNNCell(nn.Module)}.
+    \item In \texttt{\_\_init\_\_}: define \texttt{self.i2h} (Input to Hidden Linear layer) and \texttt{self.h2h} (Hidden to Hidden Linear layer).
+    \item In \texttt{forward(x, h\_prev)}:
+    \begin{itemize}
+        \item Compute $h_{new} = \tanh(\text{self.i2h}(x) + \text{self.h2h}(h\_prev))$.
+        \item Return $h_{new}$.
+    \end{itemize}
+    \item \textbf{Test:} Create a random input sequence of shape $(10, 1, 5)$ (SeqLen, Batch, Feats). Iterate through the sequence using a Python \texttt{for} loop, updating the hidden state at each step.
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[6.2: The "Engineer" - LSTM from Scratch]
+This is a rite of passage. You must implement the LSTM equations manually.
+\textbf{Formulas:}
+$$ \begin{pmatrix} i \\ f \\ g \\ o \end{pmatrix} = \begin{pmatrix} \sigma \\ \sigma \\ \tanh \\ \sigma \end{pmatrix} (W \cdot [h_{t-1}, x_t] + b) $$
+$$ c_t = f \odot c_{t-1} + i \odot g $$
+$$ h_t = o \odot \tanh(c_t) $$
+
+\textbf{Task:}
+\begin{enumerate}
+    \item Create \texttt{MyLSTMCell}.
+    \item Use a single \texttt{nn.Linear} that maps $(input\_dim + hidden\_dim) \to (4 \times hidden\_dim)$. This is a common optimization (calculating all gates at once).
+    \item Slice the output of this linear layer into 4 chunks ($i, f, g, o$).
+    \item Apply the correct activations (Sigmoid for gates, Tanh for candidate).
+    \item Implement the cell state update and hidden state update.
+    \item Verify your outputs against \texttt{nn.LSTMCell} with the same weights (you will need to manually copy weights to verify).
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[6.3: The "Analyst" - Time Series Prediction]
+Now use the native \texttt{nn.LSTM}.
+\textbf{Data:} Generate a synthetic signal: $y = \sin(t) + \sin(0.5t) + \text{noise}$. Length 1000.
+\textbf{Task:} Many-to-One prediction.
+\begin{enumerate}
+    \item Create a dataset where Input is a window of 50 steps, and Target is step 51.
+    \item \textbf{Model:} \texttt{nn.LSTM(input\_size=1, hidden\_size=64, num\_layers=2, batch\_first=True)}. Followed by \texttt{nn.Linear(64, 1)}.
+    \item \textbf{Forward:} Pass the sequence. Take the \textbf{last} hidden state (output of the last time step). Feed it to the Linear layer.
+    \item Train with MSE Loss.
+    \item Plot the True vs Predicted future.
+\end{enumerate}
+\end{exercise}
+
+\clearpage
+\section{Module 7: The Transformer and Attention}
+
+\subsection{Theory: Attention is All You Need}
+RNNs suffer from a sequential bottleneck. To process token 100, you must wait for token 99. This precludes parallelization. Furthermore, "memory" is compressed into a single vector.
+
+The Transformer proposes a radical idea: \textbf{Self-Attention}.
+Instead of remembering a summary, let every element in the sequence look at every other element and decide what is important.
+
+\subsubsection{1. The Query-Key-Value Mechanism}
+This is a database retrieval concept made differentiable.
+For every vector $x_i$ in our sequence, we apply three linear transformations to get three new vectors:
+\begin{itemize}
+    \item \textbf{Query ($q_i$):} What I am looking for?
+    \item \textbf{Key ($k_i$):} What do I contain? (My label).
+    \item \textbf{Value ($v_i$):} What is my actual information content?
+\end{itemize}
+
+\textbf{The Attention Score:}
+We compute the similarity between Query $i$ and Key $j$ using a dot product.
+$$ \text{score}_{ij} = q_i \cdot k_j $$
+We scale this by $\frac{1}{\sqrt{d_k}}$ (to stabilize gradients) and apply Softmax. This gives us a probability distribution: "How much attention should $i$ pay to $j$?"
+$$ \alpha_{ij} = \text{softmax}_j \left( \frac{q_i k_j^T}{\sqrt{d_k}} \right) $$
+Finally, the output for position $i$ is the weighted sum of all Values:
+$$ z_i = \sum_j \alpha_{ij} v_j $$
+
+
+
+\subsubsection{2. Multi-Head Attention}
+One attention head can only focus on one type of relationship (e.g., "previous word"). We want to capture multiple relationships simultaneously (e.g., "previous word", "subject of sentence", "prepositional object").
+We run $H$ attention mechanisms in parallel, each with its own learnable $W^Q, W^K, W^V$ matrices. We concatenate their outputs.
+
+\subsubsection{3. Positional Encoding}
+The attention mechanism is set-invariant. It has no notion of order. $A \to B$ looks the same as $B \to A$.
+To fix this, we \textbf{add} a positional vector to the input embeddings. In scientific computing, this is often a vector of $\sin$ and $\cos$ frequencies, allowing the network to learn periodicity.
+
+\subsection{Module 7 Exercises: Mastering the Transformer}
+
+\begin{exercise}[7.1: The "Mathematician" - Attention by Hand]
+\textbf{Goal:} Implement Scaled Dot-Product Attention using only matrix multiplication (\texttt{torch.matmul}).
+\begin{enumerate}
+    \item Inputs: $Q, K, V$. All shape $(B, H, L, D)$ (Batch, Heads, SeqLen, HeadDim).
+    \item Compute $S = Q K^T$. Warning: You need to transpose the last two dimensions of K. Use \texttt{K.transpose(-2, -1)}.
+    \item Result shape should be $(B, H, L, L)$. This is the \textbf{Attention Matrix}.
+    \item Scale by $1/\sqrt{D}$.
+    \item Apply Mask (optional): Set elements where you want "no attention" to $-\infty$.
+    \item Apply \texttt{F.softmax(dim=-1)}.
+    \item Multiply by $V$: $Out = \text{Attention} \cdot V$.
+    \item Return $Out$ and the Attention Matrix (for visualization).
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[7.2: The "Architect" - Transformer Block from Scratch]
+You will build a single Encoder Layer.
+\textbf{Structure:}
+$$ x \to \text{LayerNorm}(x + \text{Attention}(x)) \to \text{LayerNorm}(z + \text{FeedForward}(z)) $$
+\textbf{Task:}
+\begin{enumerate}
+    \item Class \texttt{MyTransformerBlock(nn.Module)}.
+    \item Init: \texttt{nn.MultiheadAttention}, two \texttt{nn.LayerNorm}s, and a small FeedForward network (Linear $\to$ ReLU $\to$ Linear).
+    \item Forward:
+    \begin{itemize}
+        \item Save input as \texttt{residual}.
+        \item Run Attention. Add \texttt{residual}. Run LayerNorm.
+        \item Save result as \texttt{residual}.
+        \item Run FeedForward. Add \texttt{residual}. Run LayerNorm.
+    \end{itemize}
+    \item \textbf{Why Add \& Norm?} This is the "Residual Connection". It is crucial for deep networks. It allows gradients to flow through the network without bottlenecking at the layers.
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[7.3: The "Scientist" - Solving a PDE with Transformers]
+This is an advanced research problem.
+\textbf{Problem:} Learning the solution operator for the Burgers' Equation (1D fluid flow).
+\textbf{Data:} We treat the discretization of the domain $x \in [0, 1]$ as a sequence of points.
+\begin{enumerate}
+    \item \textbf{Input:} Initial condition $u_0(x)$ sampled at 64 points. Sequence length = 64.
+    \item \textbf{Target:} Solution $u_T(x)$ at time $T=1.0$.
+    \item \textbf{Model:}
+    \begin{itemize}
+        \item Input Embedding: Map scalar $u$ to vector dim 64.
+        \item Positional Encoding: Add sine/cos embeddings so the model knows $x=0.1$ vs $x=0.9$.
+        \item Transformer Encoder: Stack 4 layers of your \texttt{MyTransformerBlock}.
+        \item Output Projection: Map vector dim 64 back to scalar $u$.
+    \end{itemize}
+    \item Train with MSE Loss.
+    \item \textbf{Analysis:} Extract the Attention Matrix from the first layer. Visualize it as a heatmap. You should see "bands" representing the propagation of the wave front. The network "attends" to the upstream location that determines the current location's value!
+\end{enumerate}
+\end{exercise}
+
+\section*{Final Words on Sequence Modeling}
+You have now implemented the engines that drive ChatGPT, AlphaFold, and modern weather forecasting models.
+Remember:
+\begin{itemize}
+    \item \textbf{RNNs} iterate. They are O(N) in time and O(1) in memory. They struggle with long context.
+    \item \textbf{Transformers} parallelize. They are O(1) in time but O($N^2$) in memory (due to the attention matrix). They capture global context perfectly.
+\end{itemize}
+Choose your weapon based on your scientific constraints.
+
+
+\clearpage
+\part{The Grand Examination: Integrative Challenges}
+
+\section*{A Note on Difficulty}
+\begin{profnote}
+\textbf{Warning} -- The following exercises are not tutorials. They are problems. They are designed to be frustrating. You will likely encounter dimension mismatches, exploding gradients, and silent failures. This is normal. This is research.
+\end{profnote}
+
+\section{Challenge Set 1: The "Raw Metal" Operations}
+
+\begin{exercise}
+\textbf{Grand Challenge I: Logistic Regression from Scratch} -- We often rely too heavily on \texttt{nn.Linear} and \texttt{nn.CrossEntropyLoss}. To understand them, you must recreate them.
+
+\textbf{Task:} Train a binary classifier for 2D data (two blobs of points) without using \texttt{nn.Module} or \texttt{torch.optim}.
+\begin{enumerate}
+    \item Generate synthetic data: 100 points for Class 0 (centered at -2, -2) and 100 points for Class 1 (centered at 2, 2).
+    \item Initialize weights $W$ (shape 2x1) and bias $b$ (shape 1) as tensors with \texttt{requires\_grad=True}.
+    \item \textbf{The Loop:}
+    \begin{itemize}
+        \item Compute logits: $z = XW + b$.
+        \item Compute probabilities manually using the Sigmoid formula: $\sigma(z) = \frac{1}{1 + e^{-z}}$.
+        \item Compute Binary Cross Entropy Loss manually: $L = -\frac{1}{N} \sum [y \log(\hat{y}) + (1-y) \log(1-\hat{y})]$.
+        \item Call \texttt{L.backward()}.
+        \item Update parameters: $W = W - \eta \cdot W.grad$. \textbf{Hint:} You must wrap this update in \texttt{with torch.no\_grad():}, otherwise PyTorch will try to track the update step itself in the graph!
+        \item Zero the gradients manually: \texttt{W.grad = None}.
+    \end{itemize}
+    \item Achieve $>95\%$ accuracy.
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}
+\textbf{Grand Challenge II: Custom Autograd Function} -- Sometimes, you need an operation that PyTorch doesn't support, or you want to override the gradient calculation (e.g., for numerical stability).
+
+\textbf{Task:} Implement a custom activation function $f(x) = x \cdot \sin(x)$.
+\begin{enumerate}
+    \item Inherit from \texttt{torch.autograd.Function}.
+    \item Implement the static method \texttt{forward(ctx, input)}. Save the input for the backward pass using \texttt{ctx.save\_for\_backward}.
+    \item Implement the static method \texttt{backward(ctx, grad\_output)}.
+    \begin{itemize}
+        \item Retrieve input.
+        \item Analytically calculate $f'(x) = \sin(x) + x \cos(x)$.
+        \item Return \texttt{grad\_output * f'(x)} (Chain rule).
+    \end{itemize}
+    \item Wrap this function in a standard \texttt{nn.Module} and use it to train a small network.
+    \item Verify your gradient is correct using \texttt{torch.autograd.gradcheck}.
+\end{enumerate}
+\end{exercise}
+
+\section{Challenge Set 2: Scientific Architectures}
+
+\begin{exercise}
+\textbf{Grand Challenge III: The Convolutional Autoencoder} -- In scientific computing, we often need to compress complex fields (like fluid velocity) into a small "latent space" or remove noise from sensor data.
+
+\textbf{Task:} Build a Denoising Autoencoder for MNIST.
+\begin{enumerate}
+    \item \textbf{Data:} Load MNIST. Create a version of the dataset where you add Gaussian noise to every image.
+    \item \textbf{Encoder:} A series of \texttt{Conv2d} layers with \texttt{stride=2} (to downsample). Compress the $28 \times 28$ image into a $3 \times 3 \times 64$ latent vector.
+    \item \textbf{Decoder:} A series of \texttt{ConvTranspose2d} layers (sometimes called Deconvolutions) to upsample back to $28 \times 28$.
+    \item \textbf{Training:} Input is the \textit{Noisy} image. Target is the \textit{Clean} image. Loss is MSE.
+    \item \textbf{Goal:} The network effectively "learns" to remove noise. Visualise the Input, the Output, and the Original Clean image side-by-side.
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}
+\textbf{Grand Challenge IV: Physics-Informed Neural Network (PINN)} -- This is the holy grail of Deep Learning in Science. We will not train on data; we will train on a \textit{differential equation}.
+
+\textbf{Problem:} Solve the Harmonic Oscillator: $\frac{d^2u}{dt^2} + u = 0$ for $t \in [0, 2\pi]$, with $u(0)=1, u'(0)=0$. (True solution: $u(t) = \cos(t)$).
+\begin{enumerate}
+    \item \textbf{Network:} A simple MLP: Input $t$ (1 neuron) $\to$ Hidden layers $\to$ Output $u$ (1 neuron). \textbf{Important:} Use \texttt{nn.Tanh} activation (it has smooth non-zero 2nd derivatives).
+    \item \textbf{Physics Loss:}
+    \begin{itemize}
+        \item Generate random points $t$ in $[0, 2\pi]$. Set \texttt{requires\_grad=True} on inputs.
+        \item Compute prediction $u_{pred} = \text{model}(t)$.
+        \item Compute first derivative $u_t = \text{torch.autograd.grad}(u_{pred}, t, \dots)[0]$.
+        \item Compute second derivative $u_{tt} = \text{torch.autograd.grad}(u_t, t, \dots)[0]$.
+        \item Define residual: $R = u_{tt} + u_{pred}$.
+        \item Loss PDE = $\text{Mean}(R^2)$.
+    \end{itemize}
+    \item \textbf{Boundary Loss:}
+    \begin{itemize}
+        \item Compute $u(0)$ and $u'(0)$ using the network.
+        \item Loss BC = $(u(0) - 1)^2 + (u'(0) - 0)^2$.
+    \end{itemize}
+    \item \textbf{Total Loss:} Loss = Loss PDE + Loss BC.
+    \item Train the network. Plot the network's prediction against the analytical $\cos(t)$. It should match perfectly without ever seeing the cosine function!
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}
+\textbf{Grand Challenge V: The "Vectorex" Capstone} -- Combine everything.
+
+\textbf{Task:} Predict the future state of a chaotic system (The Lorenz Attractor) using a Transformer.
+\begin{enumerate}
+    \item \textbf{Data Generation:} Use \texttt{scipy.integrate.odeint} to generate a trajectory of the Lorenz system $(x, y, z)$ for 10,000 time steps.
+    \item \textbf{Preprocessing:} Create a dataset of windows. Input: sequence of length 50. Target: sequence of length 50 (shifted by 1 step into the future).
+    \item \textbf{Model:} Implement a Transformer Decoder-only model (like GPT).
+    \begin{itemize}
+        \item You will need to implement \textit{Causal Masking} in the attention mechanism (so position $t$ cannot see $t+1$).
+    \end{itemize}
+    \item \textbf{Inference:} Feed the model an initial seed of 50 points. Have it generate the next 500 points auto-regressively (predict one, append to input, predict next).
+    \item \textbf{Viz:} Plot the generated 3D trajectory against the true trajectory. How long does the model stay on track before chaos diverges?
+\end{enumerate}
+\end{exercise}
+
+\section*{Final Certification}
+
+If you complete Grand Challenge IV (The PINN) and Grand Challenge V (Lorenz Transformer), you have my permission to consider yourself proficient in PyTorch for Scientific Computing. You have moved beyond "using" the library to "wielding" it as an instrument of science.
+\end{document}
