@@ -1,0 +1,1574 @@
+\documentclass[11pt,a4paper]{article}
+
+% ============================================
+% PACKAGES
+% ============================================
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{geometry}
+\geometry{margin=1in}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{tcolorbox}
+\usepackage{enumitem}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{tikz}
+\usetikzlibrary{positioning,shapes,arrows}
+\usepackage{bbm}
+\usepackage{dsfont}
+
+% ============================================
+% COLORS AND STYLE
+% ============================================
+\definecolor{codebackground}{rgb}{0.95,0.95,0.95}
+\definecolor{codecomment}{rgb}{0.13,0.54,0.13}
+\definecolor{codekeyword}{rgb}{0.0,0.0,0.8}
+\definecolor{codestring}{rgb}{0.63,0.13,0.94}
+\definecolor{theorembackground}{rgb}{0.95,0.95,1.0}
+\definecolor{exercisebackground}{rgb}{1.0,0.95,0.85}
+\definecolor{remarkbackground}{rgb}{0.95,1.0,0.95}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,      
+    urlcolor=cyan,
+    citecolor=blue
+}
+
+% ============================================
+% LISTINGS CONFIGURATION FOR PYTHON
+% ============================================
+\lstdefinestyle{pythonstyle}{
+    backgroundcolor=\color{codebackground},
+    commentstyle=\color{codecomment},
+    keywordstyle=\color{codekeyword}\bfseries,
+    numberstyle=\tiny\color{gray},
+    stringstyle=\color{codestring},
+    basicstyle=\ttfamily\small,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2,
+    language=Python
+}
+\lstset{style=pythonstyle}
+
+% ============================================
+% THEOREM ENVIRONMENTS
+% ============================================
+\tcbuselibrary{theorems}
+
+\newtcbtheorem[number within=section]{theorem}{Theorem}{
+  colback=theorembackground,
+  colframe=blue!75!black,
+  fonttitle=\bfseries
+}{thm}
+
+\newtcbtheorem[number within=section]{definition}{Definition}{
+  colback=theorembackground,
+  colframe=blue!75!black,
+  fonttitle=\bfseries
+}{def}
+
+\newtcbtheorem[number within=section]{lemma}{Lemma}{
+  colback=theorembackground,
+  colframe=blue!60!black,
+  fonttitle=\bfseries
+}{lem}
+
+\newtcbtheorem[number within=section]{remark}{Remark}{
+  colback=remarkbackground,
+  colframe=green!60!black,
+  fonttitle=\bfseries
+}{rem}
+
+\newtcolorbox{exercise}[1][]{
+  colback=exercisebackground,
+  colframe=orange!75!black,
+  title=\textbf{Exercise #1},
+  fonttitle=\bfseries
+}
+
+\newtcolorbox{keypoint}{
+  colback=yellow!10,
+  colframe=red!75!black,
+  title=\textbf{Key Point},
+  fonttitle=\bfseries
+}
+
+% ============================================
+% CUSTOM COMMANDS
+% ============================================
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\C}{\mathbb{C}}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\Z}{\mathbb{Z}}
+\newcommand{\F}{\mathcal{F}}
+\newcommand{\Finv}{\mathcal{F}^{-1}}
+\newcommand{\norm}[1]{\left\|#1\right\|}
+\newcommand{\abs}[1]{\left|#1\right|}
+\newcommand{\inner}[2]{\left\langle #1, #2 \right\rangle}
+\newcommand{\conv}{\ast}
+\newcommand{\Ker}{\text{Ker}\,}
+\newcommand{\Image}{\text{Im}\,}
+
+% Title information
+\title{\textbf{Fourier Neural Operators: \\
+Theory, Implementation, and Practice}\\[0.5em]
+\large A Comprehensive Tutorial with Exercises}
+
+\author{Tutorial Document}
+\date{\today}
+
+% ============================================
+% DOCUMENT BEGINS
+% ============================================
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+This comprehensive tutorial explores Fourier Neural Operators (FNOs), a revolutionary architecture for learning solution operators of partial differential equations. We present the theoretical foundations, explain why FNOs are resolution-invariant, dissect the PyTorch implementation in detail, and provide structured exercises to build your own implementation from scratch. This document is designed for students and practitioners who want to deeply understand both the mathematical elegance and practical implementation of FNOs.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+% ============================================
+% PART I: THEORETICAL FOUNDATIONS
+% ============================================
+\section{Introduction to Operator Learning}
+
+\subsection{The Classical Problem}
+
+Traditional neural networks excel at learning mappings between finite-dimensional spaces:
+\begin{equation}
+f: \R^n \to \R^m
+\end{equation}
+
+However, many problems in science and engineering involve learning operators that map between \textbf{infinite-dimensional function spaces}:
+\begin{equation}
+\mathcal{G}: \mathcal{U} \to \mathcal{V}
+\end{equation}
+where $\mathcal{U}$ and $\mathcal{V}$ are function spaces.
+
+\subsection{PDE Solution Operators}
+
+\begin{definition}{PDE Solution Operator}{}
+Consider a parametric PDE:
+\begin{equation}
+\begin{cases}
+\mathcal{L}(u; a) = f & \text{in } \Omega \\
+\mathcal{B}(u) = g & \text{on } \partial\Omega
+\end{cases}
+\end{equation}
+where $\mathcal{L}$ is a differential operator, $a$ represents parameters (e.g., coefficients, initial conditions), $f$ is a source term, and $\mathcal{B}$ represents boundary conditions.
+
+The \textbf{solution operator} is:
+\begin{equation}
+\mathcal{G}: a \mapsto u
+\end{equation}
+which maps the parameters to the solution.
+\end{definition}
+
+\begin{remark}{Why Operator Learning?}{}
+Traditional approaches solve PDEs numerically for each new set of parameters, which is computationally expensive. Operator learning aims to learn $\mathcal{G}$ directly from data, enabling:
+\begin{itemize}
+\item Fast predictions for new parameters
+\item Generalization across different discretizations
+\item Integration into larger computational pipelines
+\end{itemize}
+\end{remark}
+
+\subsection{The Discretization Challenge}
+
+When we work with computers, functions must be discretized. A key challenge is:
+
+\begin{keypoint}
+\textbf{Traditional neural networks are tied to specific discretizations.} If you train on a $64 \times 64$ grid, the model cannot handle a $128 \times 128$ grid without retraining.
+\end{keypoint}
+
+This is where Fourier Neural Operators shine.
+
+% ============================================
+\section{Fourier Neural Operators: Architecture}
+
+\subsection{High-Level Overview}
+
+The Fourier Neural Operator (FNO) was introduced by Li et al. (2020) in their paper ``Fourier Neural Operator for Parametric Partial Differential Equations.'' 
+
+The key innovation is performing convolutions in the \textbf{Fourier domain}, which enables:
+\begin{enumerate}
+\item \textbf{Global receptive fields} (unlike local convolutions)
+\item \textbf{Resolution invariance} (works on any discretization)
+\item \textbf{Efficient computation} (via FFT)
+\end{enumerate}
+
+\subsection{Architecture Components}
+
+An FNO consists of three main components:
+
+\begin{figure}[H]
+\centering
+% You can include your architecture diagram here
+\includegraphics[width=0.9\textwidth]{fno_architecture.png}
+\caption{Fourier Neural Operator Architecture. The network consists of a lifting layer $P$, multiple Fourier layers, and a projection layer $Q$.}
+\label{fig:fno_architecture}
+\end{figure}
+
+\subsubsection{1. Lifting Layer ($P$)}
+
+\begin{equation}
+v_0(x) = P(a(x), x)
+\end{equation}
+
+The lifting layer maps the input function (and potentially spatial coordinates) to a higher-dimensional space:
+\begin{equation}
+P: \R^{d_a} \to \R^d
+\end{equation}
+where $d_a$ is the input channel dimension and $d$ is the hidden dimension (width).
+
+\textbf{Purpose:} Increases representation capacity, similar to feature extraction in CNNs.
+
+\subsubsection{2. Fourier Layers}
+
+The core of the FNO. Each layer computes:
+\begin{equation}
+v_{t+1}(x) = \sigma\left( W v_t(x) + (\mathcal{K} v_t)(x) \right)
+\end{equation}
+
+where:
+\begin{itemize}
+\item $W$ is a local linear transformation (implemented as 1D convolution)
+\item $\mathcal{K}$ is the \textbf{integral kernel operator} (implemented in Fourier space)
+\item $\sigma$ is an activation function
+\end{itemize}
+
+\subsubsection{3. Projection Layer ($Q$)}
+
+\begin{equation}
+u(x) = Q(v_T(x))
+\end{equation}
+
+Maps from the high-dimensional hidden space back to the output:
+\begin{equation}
+Q: \R^d \to \R^{d_u}
+\end{equation}
+
+\subsection{The Fourier Layer in Detail}
+
+This is where the magic happens. Let's understand each step:
+
+\begin{algorithm}[H]
+\caption{Fourier Layer Forward Pass}
+\begin{algorithmic}[1]
+\State \textbf{Input:} $v_t \in \R^{B \times d \times n}$ where $B$ is batch size, $d$ is channels, $n$ is spatial resolution
+\State \textbf{Step 1:} Apply FFT to transform to frequency domain
+\State $\hat{v}_t = \F(v_t) \in \C^{B \times d \times n/2+1}$
+\State \textbf{Step 2:} Apply learnable linear transformation on lower frequency modes
+\State $\hat{w}_t = R_\phi \hat{v}_t$ where $R_\phi$ acts only on modes $k \leq k_{\max}$
+\State \textbf{Step 3:} Apply inverse FFT to return to physical space
+\State $w_t = \Finv(\hat{w}_t) \in \R^{B \times d \times n}$
+\State \textbf{Step 4:} Add skip connection with activation
+\State $v_{t+1} = \sigma(w_t + Wv_t)$
+\State \textbf{Return:} $v_{t+1}$
+\end{algorithmic}
+\end{algorithm}
+
+\begin{definition}{Integral Kernel Operator in Fourier Space}{}
+The kernel operator can be written as:
+\begin{equation}
+(\mathcal{K}v)(x) = \int_\Omega \kappa(x, y) v(y) dy
+\end{equation}
+
+By the convolution theorem, this becomes a pointwise multiplication in Fourier space:
+\begin{equation}
+\widehat{(\mathcal{K}v)}(k) = \hat{\kappa}(k) \cdot \hat{v}(k)
+\end{equation}
+
+where $\hat{\kappa}(k)$ are learnable complex weights parameterizing the kernel in frequency space.
+\end{definition}
+
+% ============================================
+\section{Why FNO is Resolution Invariant}
+
+This is one of the most important properties of FNOs. Let's understand it deeply.
+
+\subsection{The Problem with Traditional CNNs}
+
+Traditional CNNs operate in the \textbf{spatial domain}:
+\begin{itemize}
+\item Weights are tied to specific grid locations
+\item Number of parameters depends on resolution
+\item Model cannot handle different resolutions without retraining
+\end{itemize}
+
+\subsection{The FNO Solution}
+
+FNOs operate in the \textbf{frequency domain}:
+
+\begin{theorem}{Resolution Invariance of FNO}{}
+Let $v \in L^2(\Omega)$ be a function and $v^{(n)} \in \R^n$ be its discretization on $n$ grid points. The FNO operator $\mathcal{G}_\theta$ satisfies:
+\begin{equation}
+\lim_{n \to \infty} \norm{\mathcal{G}_\theta(v^{(n)}) - \mathcal{G}_\theta(v)}_{L^2} = 0
+\end{equation}
+Furthermore, for two different discretizations $v^{(n_1)}$ and $v^{(n_2)}$:
+\begin{equation}
+\mathcal{G}_\theta(v^{(n_1)}) \approx \mathcal{G}_\theta(v^{(n_2)})
+\end{equation}
+up to discretization error, without any retraining.
+\end{theorem}
+
+\begin{proof}[Intuition]
+The key insight is that FNO learns in the frequency domain:
+
+\begin{enumerate}
+\item \textbf{Truncation in Frequency Space:} FNO only parameterizes the first $k_{\max}$ Fourier modes. These modes represent the large-scale structure of the function.
+
+\item \textbf{Resolution Independence:} The Fourier modes are intrinsic to the function, not the discretization. Whether you discretize with $n=64$ or $n=128$ points, the first 16 Fourier modes represent the same mathematical content.
+
+\item \textbf{Automatic Interpolation:} The inverse FFT automatically handles different resolutions. Given the same Fourier coefficients, it produces the correct values on any grid.
+
+\item \textbf{Zero-Padding:} For higher resolutions, modes beyond $k_{\max}$ are implicitly zero, which is a natural assumption for smooth functions.
+\end{enumerate}
+\end{proof}
+
+\subsection{Mathematical Foundation}
+
+Let's formalize this. For a function $v: \Omega \to \R$ where $\Omega = [0, 1]$, the Fourier series expansion is:
+\begin{equation}
+v(x) = \sum_{k \in \Z} \hat{v}(k) e^{2\pi i k x}
+\end{equation}
+
+The FNO parametrizes a truncated version:
+\begin{equation}
+v_{\text{FNO}}(x) = \sum_{|k| \leq k_{\max}} \hat{v}(k) e^{2\pi i k x}
+\end{equation}
+
+This truncation is:
+\begin{itemize}
+\item \textbf{Independent of discretization:} The same $k_{\max}$ modes work for any resolution
+\item \textbf{A natural regularization:} Assumes the solution is dominated by low-frequency components (which is true for most smooth PDEs)
+\item \textbf{Computationally efficient:} Fewer parameters than full resolution
+\end{itemize}
+
+\begin{remark}{Practical Implication}{}
+\textbf{You can train on coarse grids and test on fine grids!}
+
+For example:
+\begin{itemize}
+\item Train on $64 \times 64$ grid (cheaper)
+\item Test on $256 \times 256$ grid (more accurate)
+\item No retraining needed!
+\end{itemize}
+
+The model will generalize because it learned the operator in the continuous function space, not tied to a specific discretization.
+\end{remark}
+
+% ============================================
+\section{Implementation Details and PyTorch Tricks}
+
+Now let's dive deep into the implementation, understanding every design choice and PyTorch trick.
+
+\subsection{The SpectralConv1d Layer}
+
+This is the heart of the FNO. Let's examine it piece by piece:
+
+\begin{lstlisting}[caption={SpectralConv1d Implementation}]
+class SpectralConv1d(nn.Module):
+    def __init__(self, in_channels, out_channels, modes1):
+        super(SpectralConv1d, self).__init__()
+        
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.modes1 = modes1  # Number of Fourier modes to keep
+        
+        # Initialize weights with proper scaling
+        self.scale = (1 / (in_channels * out_channels))
+        self.weights1 = nn.Parameter(
+            self.scale * torch.rand(
+                in_channels, out_channels, 
+                self.modes1, 
+                dtype=torch.cfloat  # Complex numbers!
+            )
+        )
+\end{lstlisting}
+
+\subsubsection{PyTorch Trick \#1: Complex Parameters}
+
+\begin{keypoint}
+\texttt{dtype=torch.cfloat} creates complex-valued parameters. This is crucial because Fourier coefficients are complex numbers: $\hat{v}(k) \in \C$.
+
+PyTorch's autograd automatically handles complex gradients!
+\end{keypoint}
+
+\subsubsection{PyTorch Trick \#2: Einstein Summation}
+
+\begin{lstlisting}[caption={Complex Multiplication via einsum}]
+def compl_mul1d(self, input, weights):
+    # (batch, in_channel, x), (in_channel, out_channel, x) 
+    # -> (batch, out_channel, x)
+    return torch.einsum("bix,iox->box", input, weights)
+\end{lstlisting}
+
+\begin{remark}{Why einsum?}{}
+\texttt{torch.einsum} performs Einstein summation notation:
+\begin{itemize}
+\item \textbf{Elegant:} Describes the operation mathematically
+\item \textbf{Flexible:} Works with arbitrary tensor dimensions
+\item \textbf{Efficient:} Optimized by PyTorch backend
+\end{itemize}
+
+The notation \texttt{"bix,iox->box"} means:
+\begin{equation}
+\text{output}[b, o, x] = \sum_i \text{input}[b, i, x] \cdot \text{weights}[i, o, x]
+\end{equation}
+
+This is a batched matrix multiplication over the channel dimension, for each frequency $x$.
+\end{remark}
+
+\subsubsection{The Forward Pass}
+
+\begin{lstlisting}[caption={Forward Pass of SpectralConv1d}]
+def forward(self, x):
+    batchsize = x.shape[0]
+    # x.shape = [batch, channels, spatial_dim]
+    
+    # Step 1: FFT to frequency domain
+    x_ft = torch.fft.rfft(x)
+    # x_ft.shape = [batch, channels, spatial_dim//2 + 1]
+    
+    # Step 2: Multiply relevant Fourier modes
+    out_ft = torch.zeros(
+        batchsize, self.out_channels, 
+        x.size(-1) // 2 + 1,
+        device=x.device, dtype=torch.cfloat
+    )
+    out_ft[:, :, :self.modes1] = self.compl_mul1d(
+        x_ft[:, :, :self.modes1], 
+        self.weights1
+    )
+    
+    # Step 3: Inverse FFT back to physical space
+    x = torch.fft.irfft(out_ft, n=x.size(-1))
+    
+    return x
+\end{lstlisting}
+
+\subsubsection{PyTorch Trick \#3: Real FFT (rfft)}
+
+\begin{keypoint}
+\texttt{torch.fft.rfft} is used instead of \texttt{torch.fft.fft} because:
+\begin{itemize}
+\item Input is real-valued
+\item Due to symmetry: $\hat{v}(-k) = \overline{\hat{v}(k)}$
+\item Only need to store positive frequencies
+\item Output size: $n/2 + 1$ instead of $n$ (saves memory)
+\item Inverse: \texttt{torch.fft.irfft} reconstructs real signal
+\end{itemize}
+\end{keypoint}
+
+\subsubsection{PyTorch Trick \#4: Mode Truncation}
+
+\begin{lstlisting}
+out_ft[:, :, :self.modes1] = self.compl_mul1d(...)
+\end{lstlisting}
+
+This implements the low-pass filter:
+\begin{itemize}
+\item Only transform the first \texttt{modes1} frequencies
+\item Higher frequencies remain zero (implicit in \texttt{out\_ft} initialization)
+\item This is the resolution invariance mechanism!
+\end{itemize}
+
+\subsection{The Complete FNO1d Model}
+
+\begin{lstlisting}[caption={Full FNO1d Implementation}]
+class FNO1d(nn.Module):
+    def __init__(self, modes, width):
+        super(FNO1d, self).__init__()
+        
+        self.modes1 = modes
+        self.width = width
+        
+        # Lifting: R^2 -> R^width
+        self.linear_p = nn.Linear(2, self.width)
+        
+        # Three Fourier layers
+        self.spect1 = SpectralConv1d(self.width, self.width, self.modes1)
+        self.spect2 = SpectralConv1d(self.width, self.width, self.modes1)
+        self.spect3 = SpectralConv1d(self.width, self.width, self.modes1)
+        
+        # Skip connections (1x1 convolutions)
+        self.lin0 = nn.Conv1d(self.width, self.width, 1)
+        self.lin1 = nn.Conv1d(self.width, self.width, 1)
+        self.lin2 = nn.Conv1d(self.width, self.width, 1)
+        
+        # Projection: R^width -> R^32 -> R^1
+        self.linear_q = nn.Linear(self.width, 32)
+        self.output_layer = nn.Linear(32, 1)
+        
+        self.activation = torch.nn.Tanh()
+    
+    def fourier_layer(self, x, spectral_layer, conv_layer):
+        return self.activation(spectral_layer(x) + conv_layer(x))
+    
+    def forward(self, x):
+        # x.shape = [batch, spatial, 2]  (includes grid points!)
+        
+        # Lift
+        x = self.linear_p(x)  # [batch, spatial, width]
+        x = x.permute(0, 2, 1)  # [batch, width, spatial]
+        
+        # Fourier layers
+        x = self.fourier_layer(x, self.spect1, self.lin0)
+        x = self.fourier_layer(x, self.spect2, self.lin1)
+        x = self.fourier_layer(x, self.spect3, self.lin2)
+        
+        # Project
+        x = x.permute(0, 2, 1)  # [batch, spatial, width]
+        x = self.activation(self.linear_q(x))  # [batch, spatial, 32]
+        x = self.output_layer(x)  # [batch, spatial, 1]
+        
+        return x
+\end{lstlisting}
+
+\subsubsection{PyTorch Trick \#5: Including Grid Coordinates}
+
+\begin{keypoint}
+The input has dimension 2: \texttt{[u(x), x]}
+
+\textbf{Why include $x$?}
+\begin{itemize}
+\item Provides positional information
+\item Helps with non-periodic boundary conditions
+\item Allows the model to learn position-dependent transformations
+\end{itemize}
+
+This is different from standard CNNs where position is implicit in the convolution kernel locations.
+\end{keypoint}
+
+\subsubsection{PyTorch Trick \#6: The permute Dance}
+
+Notice the \texttt{permute} operations:
+\begin{lstlisting}
+x = x.permute(0, 2, 1)  # Before Fourier layers
+...
+x = x.permute(0, 2, 1)  # After Fourier layers
+\end{lstlisting}
+
+\textbf{Why?}
+\begin{itemize}
+\item \texttt{nn.Linear} expects: \texttt{[batch, spatial, features]}
+\item \texttt{SpectralConv1d} expects: \texttt{[batch, features, spatial]}
+\item \texttt{torch.fft.rfft} operates on the last dimension
+\end{itemize}
+
+This is a common pattern in neural operator implementations.
+
+\subsubsection{PyTorch Trick \#7: Skip Connections via 1D Convolution}
+
+\begin{lstlisting}
+self.lin0 = nn.Conv1d(self.width, self.width, 1)
+\end{lstlisting}
+
+A 1D convolution with kernel size 1 is equivalent to:
+\begin{itemize}
+\item Pointwise linear transformation
+\item Applies same weights at every spatial location
+\item More efficient than \texttt{nn.Linear} for spatial data
+\item Natural fit for the skip connection $W v_t(x)$
+\end{itemize}
+
+\subsection{Training Details}
+
+\begin{lstlisting}[caption={Training Loop}]
+optimizer = Adam(fno.parameters(), lr=0.001, weight_decay=1e-5)
+scheduler = torch.optim.lr_scheduler.StepLR(
+    optimizer, step_size=50, gamma=0.5
+)
+
+loss_fn = nn.MSELoss()
+
+for epoch in range(epochs):
+    for input_batch, output_batch in training_loader:
+        optimizer.zero_grad()
+        
+        # Forward pass
+        pred = fno(input_batch).squeeze(2)
+        
+        # Compute loss
+        loss = loss_fn(pred, output_batch)
+        
+        # Backward pass
+        loss.backward()
+        optimizer.step()
+    
+    scheduler.step()
+\end{lstlisting}
+
+\subsubsection{PyTorch Trick \#8: Squeeze Operation}
+
+\begin{lstlisting}
+pred = fno(input_batch).squeeze(2)
+\end{lstlisting}
+
+The model outputs shape \texttt{[batch, spatial, 1]}, but the target has shape \texttt{[batch, spatial]}. The \texttt{squeeze(2)} removes the singleton dimension.
+
+\subsubsection{PyTorch Trick \#9: Weight Decay as Regularization}
+
+\begin{lstlisting}
+Adam(fno.parameters(), lr=0.001, weight_decay=1e-5)
+\end{lstlisting}
+
+Weight decay adds L2 regularization:
+\begin{equation}
+\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{MSE}} + \lambda \sum_i \theta_i^2
+\end{equation}
+
+This prevents overfitting, especially important for operator learning where training data is limited.
+
+% ============================================
+\section{Example: Allen-Cahn Equation}
+
+The notebook demonstrates FNO on the Allen-Cahn equation:
+\begin{equation}
+u_t = \Delta u - \epsilon^{-2} u(u^2 - 1), \quad (x, t) \in \R \times \R_{>0}
+\end{equation}
+
+The operator to learn:
+\begin{equation}
+\mathcal{G}: u(\cdot, t=0) \mapsto u(\cdot, t=1)
+\end{equation}
+
+\subsection{Data Processing}
+
+\begin{lstlisting}[caption={Data Loading}]
+x_data = torch.from_numpy(np.load("AC_data_input.npy")).type(torch.float32)
+y_data = torch.from_numpy(np.load("AC_data_output.npy")).type(torch.float32)
+
+# Swap columns to get [u(x), x] format
+temporary_tensor = torch.clone(x_data[:, :, 0])
+x_data[:, :, 0] = x_data[:, :, 1]
+x_data[:, :, 1] = temporary_tensor
+\end{lstlisting}
+
+\textbf{Data Format:}
+\begin{itemize}
+\item \texttt{x\_data}: shape \texttt{[n\_samples, n\_points, 2]} containing $[u_0(x), x]$
+\item \texttt{y\_data}: shape \texttt{[n\_samples, n\_points]} containing $u_1(x)$
+\end{itemize}
+
+\subsection{Resolution Invariance Test}
+
+The notebook demonstrates resolution invariance by subsampling:
+
+\begin{lstlisting}[caption={Testing on Coarser Grid}]
+subsample = 10
+input_test_n = input_function_test[idx, ::subsample]
+output_test_n = output_function_test[idx, ::subsample]
+
+# Model still works!
+output_pred = fno(input_test_n)
+\end{lstlisting}
+
+\begin{keypoint}
+The same trained model works on:
+\begin{itemize}
+\item Full resolution ($n = 1024$ points)
+\item Subsampled ($n = 102$ points, every 10th point)
+\item Any other resolution!
+\end{itemize}
+
+This is impossible with standard CNNs.
+\end{keypoint}
+
+% ============================================
+\section{Extension to 2D: SpectralConv2d}
+
+For 2D problems, the extension is natural:
+
+\begin{lstlisting}[caption={SpectralConv2d}]
+class SpectralConv2d(nn.Module):
+    def __init__(self, in_channels, out_channels, modes1, modes2):
+        super(SpectralConv2d, self).__init__()
+        
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.modes1 = modes1  # Modes in first dimension
+        self.modes2 = modes2  # Modes in second dimension
+        
+        self.scale = (1 / (in_channels * out_channels))
+        
+        # Need two weight matrices for 2D!
+        self.weights1 = nn.Parameter(
+            self.scale * torch.rand(
+                in_channels, out_channels, 
+                self.modes1, self.modes2,
+                dtype=torch.cfloat
+            )
+        )
+        self.weights2 = nn.Parameter(
+            self.scale * torch.rand(
+                in_channels, out_channels, 
+                self.modes1, self.modes2,
+                dtype=torch.cfloat
+            )
+        )
+    
+    def compl_mul2d(self, input, weights):
+        # (batch, in_ch, x, y), (in_ch, out_ch, x, y) 
+        # -> (batch, out_ch, x, y)
+        return torch.einsum("bixy,ioxy->boxy", input, weights)
+    
+    def forward(self, x):
+        batchsize = x.shape[0]
+        
+        # 2D FFT
+        x_ft = torch.fft.rfft2(x)
+        
+        # Multiply modes in four corners
+        out_ft = torch.zeros(
+            batchsize, self.out_channels,
+            x.size(-2), x.size(-1) // 2 + 1,
+            dtype=torch.cfloat, device=x.device
+        )
+        
+        # Upper modes
+        out_ft[:, :, :self.modes1, :self.modes2] = \
+            self.compl_mul2d(
+                x_ft[:, :, :self.modes1, :self.modes2], 
+                self.weights1
+            )
+        
+        # Lower modes (due to periodicity)
+        out_ft[:, :, -self.modes1:, :self.modes2] = \
+            self.compl_mul2d(
+                x_ft[:, :, -self.modes1:, :self.modes2], 
+                self.weights2
+            )
+        
+        # Inverse 2D FFT
+        x = torch.fft.irfft2(out_ft, s=(x.size(-2), x.size(-1)))
+        
+        return x
+\end{lstlisting}
+
+\begin{remark}{Why Two Weight Matrices in 2D?}{}
+Due to the symmetry of the FFT:
+\begin{itemize}
+\item Upper-left corner: $k_1 \geq 0, k_2 \geq 0$ (weights1)
+\item Lower-left corner: $k_1 < 0, k_2 \geq 0$ (weights2)
+\item Right half is redundant (real signal symmetry)
+\end{itemize}
+
+This efficiently represents all necessary Fourier modes while respecting symmetries.
+\end{remark}
+
+% ============================================
+% PART II: EXERCISES
+% ============================================
+\newpage
+\section{Exercises: Building Your Own FNO}
+
+These exercises will guide you through implementing your own Fourier Neural Operator from scratch. Work through them sequentially—each builds on the previous ones.
+
+% ----------------------------------------
+\subsection{Exercise Set 1: Understanding Fourier Transforms}
+
+\begin{exercise}[1.1: Manual FFT]
+\textbf{Goal:} Understand what FFT computes.
+
+\textbf{Task:}
+\begin{enumerate}[label=\alph*)]
+\item Create a simple sinusoidal function: $f(x) = \sin(2\pi \cdot 3x) + 0.5\sin(2\pi \cdot 7x)$, sampled at $n=128$ points on $[0,1]$.
+
+\item Compute its FFT using \texttt{numpy.fft.fft} or \texttt{torch.fft.fft}.
+
+\item Plot the magnitude of the Fourier coefficients. You should see peaks at frequencies 3 and 7.
+
+\item Reconstruct the signal using inverse FFT and verify it matches the original.
+\end{enumerate}
+
+\textbf{Implementation Hints:}
+\begin{lstlisting}
+import numpy as np
+import matplotlib.pyplot as plt
+
+n = 128
+x = np.linspace(0, 1, n, endpoint=False)
+f = np.sin(2*np.pi*3*x) + 0.5*np.sin(2*np.pi*7*x)
+
+# Your code here
+\end{lstlisting}
+
+\textbf{Questions to Answer:}
+\begin{itemize}
+\item What do the Fourier coefficients represent physically?
+\item Why do we see peaks at specific frequencies?
+\item What happens to the Fourier transform if you change $n$?
+\end{itemize}
+\end{exercise}
+
+\begin{exercise}[1.2: Mode Truncation]
+\textbf{Goal:} Understand the effect of keeping only low-frequency modes.
+
+\textbf{Task:}
+\begin{enumerate}[label=\alph*)]
+\item Load a non-trivial function (e.g., a noisy signal or use the Allen-Cahn data).
+
+\item Compute its FFT.
+
+\item Set all Fourier coefficients beyond the first $k_{\max} = 8, 16, 32$ modes to zero.
+
+\item Compute the inverse FFT for each case and plot the reconstructed signals.
+
+\item Compute the relative L2 error for each truncation level.
+\end{enumerate}
+
+\textbf{Expected Observation:} Higher $k_{\max}$ preserves more details. But for smooth functions, even low $k_{\max}$ gives good approximations.
+
+\textbf{Connection to FNO:} This is exactly what FNO does! It learns a transformation of the low-frequency modes.
+\end{exercise}
+
+\begin{exercise}[1.3: Resolution Invariance Test]
+\textbf{Goal:} See firsthand how Fourier modes are resolution-invariant.
+
+\textbf{Task:}
+\begin{enumerate}[label=\alph*)]
+\item Create a function at resolution $n=64$: $f(x) = x^2$.
+
+\item Compute first 8 Fourier coefficients.
+
+\item Upsample the function to $n=128$ (just evaluate at more points).
+
+\item Compute first 8 Fourier coefficients of the upsampled function.
+
+\item Compare the coefficients. They should be nearly identical!
+\end{enumerate}
+
+\textbf{Understanding:} The Fourier coefficients represent the intrinsic function, not the discretization.
+\end{exercise}
+
+% ----------------------------------------
+\subsection{Exercise Set 2: Implementing SpectralConv1d}
+
+\begin{exercise}[2.1: Complex Parameter Initialization]
+\textbf{Goal:} Learn to work with complex PyTorch tensors.
+
+\textbf{Task:}
+\begin{enumerate}[label=\alph*)]
+\item Create a complex tensor: 
+\begin{lstlisting}
+weights = nn.Parameter(
+    torch.randn(8, 16, 10, dtype=torch.cfloat)
+)
+\end{lstlisting}
+
+\item Print its shape, dtype, and a few values.
+
+\item Perform a simple operation: multiply by $i$ (imaginary unit).
+
+\item Take the real part, imaginary part, and absolute value.
+
+\item Compute its gradient using a dummy loss function.
+\end{enumerate}
+
+\textbf{Verify:} PyTorch can backpropagate through complex operations!
+\end{exercise}
+
+\begin{exercise}[2.2: Einstein Summation Practice]
+\textbf{Goal:} Master \texttt{torch.einsum} for the complex multiplication.
+
+\textbf{Task:}
+\begin{enumerate}[label=\alph*)]
+\item Create two random tensors:
+\begin{lstlisting}
+input = torch.randn(4, 8, 10)   # [batch, in_ch, freq]
+weights = torch.randn(8, 16, 10) # [in_ch, out_ch, freq]
+\end{lstlisting}
+
+\item Implement the multiplication using:
+\begin{itemize}
+\item Manual loops
+\item \texttt{torch.matmul} (think carefully about dimensions!)
+\item \texttt{torch.einsum("bix,iox->box", ...)}
+\end{itemize}
+
+\item Verify all three methods give the same result.
+
+\item Time each method. Which is fastest?
+\end{enumerate}
+
+\textbf{Expected Learning:} \texttt{einsum} is both elegant and efficient.
+\end{exercise}
+
+\begin{exercise}[2.3: Complete SpectralConv1d Implementation]
+\textbf{Goal:} Implement the complete spectral convolution layer.
+
+\textbf{Task:} Fill in the following skeleton:
+
+\begin{lstlisting}
+class SpectralConv1d(nn.Module):
+    def __init__(self, in_channels, out_channels, modes):
+        super().__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.modes = modes
+        
+        # TODO: Initialize weights
+        # Hint: Use dtype=torch.cfloat
+        # Use Xavier initialization scaled appropriately
+        
+    def compl_mul1d(self, input, weights):
+        # TODO: Implement complex multiplication
+        # Hint: Use torch.einsum
+        pass
+        
+    def forward(self, x):
+        # TODO: Implement forward pass
+        # 1. Apply rfft
+        # 2. Multiply first 'modes' frequencies
+        # 3. Apply irfft
+        pass
+\end{lstlisting}
+
+\textbf{Test Your Implementation:}
+\begin{lstlisting}
+layer = SpectralConv1d(in_channels=4, out_channels=8, modes=8)
+x = torch.randn(2, 4, 64)  # [batch, channels, spatial]
+output = layer(x)
+
+assert output.shape == (2, 8, 64)
+print("Test passed!")
+\end{lstlisting}
+
+\textbf{Debug Checklist:}
+\begin{itemize}
+\item Are shapes correct after each operation?
+\item Did you handle the complex dtype correctly?
+\item Does the output have the right shape?
+\item Can you backpropagate through it?
+\end{itemize}
+\end{exercise}
+
+% ----------------------------------------
+\subsection{Exercise Set 3: Building the Full FNO}
+
+\begin{exercise}[3.1: Lifting and Projection Layers]
+\textbf{Goal:} Implement the input/output transformations.
+
+\textbf{Task:}
+\begin{enumerate}[label=\alph*)]
+\item Implement a lifting layer that maps from input channels (2, including grid) to width (32):
+\begin{lstlisting}
+class LiftingLayer(nn.Module):
+    def __init__(self, in_dim, width):
+        # TODO: Initialize Linear layer
+        
+    def forward(self, x):
+        # TODO: Apply transformation
+        # Input: [batch, spatial, in_dim]
+        # Output: [batch, spatial, width]
+\end{lstlisting}
+
+\item Implement a projection layer that maps from width back to output dimension (1):
+\begin{lstlisting}
+class ProjectionLayer(nn.Module):
+    def __init__(self, width, out_dim):
+        # TODO: Can use multiple Linear layers
+        # TODO: Include activation functions
+\end{lstlisting}
+
+\item Test both layers with dummy data.
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[3.2: Fourier Layer Module]
+\textbf{Goal:} Combine SpectralConv1d with skip connections.
+
+\textbf{Task:} Implement a single Fourier layer:
+
+\begin{lstlisting}
+class FourierLayer(nn.Module):
+    def __init__(self, width, modes):
+        super().__init__()
+        # TODO: Initialize SpectralConv1d
+        # TODO: Initialize Conv1d for skip connection
+        # TODO: Initialize activation function
+        
+    def forward(self, x):
+        # TODO: Implement v' = σ(K(v) + W(v))
+        # Remember: SpectralConv1d expects [batch, ch, spatial]
+        pass
+\end{lstlisting}
+
+\textbf{Test:}
+\begin{lstlisting}
+layer = FourierLayer(width=32, modes=16)
+x = torch.randn(4, 32, 128)
+output = layer(x)
+assert output.shape == x.shape
+\end{lstlisting}
+\end{exercise}
+
+\begin{exercise}[3.3: Complete FNO1d]
+\textbf{Goal:} Assemble all components into the full model.
+
+\textbf{Task:} Complete this architecture:
+
+\begin{lstlisting}
+class FNO1d(nn.Module):
+    def __init__(self, modes, width, n_layers=4):
+        super().__init__()
+        
+        self.modes = modes
+        self.width = width
+        self.n_layers = n_layers
+        
+        # TODO: Initialize lifting layer
+        # TODO: Initialize n_layers Fourier layers
+        # Hint: Use nn.ModuleList
+        # TODO: Initialize projection layer
+        
+    def forward(self, x):
+        # x shape: [batch, spatial, 2] with [u(x), x]
+        
+        # TODO: Apply lifting
+        # TODO: Permute to [batch, width, spatial]
+        # TODO: Apply each Fourier layer sequentially
+        # TODO: Permute back to [batch, spatial, width]
+        # TODO: Apply projection
+        
+        return output  # Shape: [batch, spatial, 1]
+\end{lstlisting}
+
+\textbf{Verification:}
+\begin{lstlisting}
+model = FNO1d(modes=16, width=32, n_layers=4)
+x = torch.randn(2, 128, 2)
+output = model(x)
+
+assert output.shape == (2, 128, 1)
+print(f"Model has {sum(p.numel() for p in model.parameters())} parameters")
+\end{lstlisting}
+\end{exercise}
+
+% ----------------------------------------
+\subsection{Exercise Set 4: Training and Evaluation}
+
+\begin{exercise}[4.1: Data Preparation]
+\textbf{Goal:} Prepare data in the correct format.
+
+\textbf{Task:}
+\begin{enumerate}[label=\alph*)]
+\item Generate synthetic training data:
+\begin{itemize}
+\item Input: Random functions + grid
+\item Output: Transformed functions (apply some simple operator, e.g., derivative, smoothing)
+\end{itemize}
+
+\item Format as:
+\begin{lstlisting}
+# Input: [n_samples, n_points, 2]  # [u(x), x]
+# Output: [n_samples, n_points]
+\end{lstlisting}
+
+\item Create PyTorch DataLoaders with appropriate batch size.
+
+\item Visualize a few training examples.
+\end{enumerate}
+
+\textbf{Bonus:} Try loading and preprocessing the Allen-Cahn data.
+\end{exercise}
+
+\begin{exercise}[4.2: Training Loop]
+\textbf{Goal:} Train your FNO model.
+
+\textbf{Task:} Implement a complete training loop:
+
+\begin{lstlisting}
+def train_fno(model, train_loader, val_loader, epochs=100):
+    # TODO: Initialize optimizer (Adam)
+    # TODO: Initialize learning rate scheduler
+    # TODO: Initialize loss function (MSELoss)
+    
+    for epoch in range(epochs):
+        # Training phase
+        model.train()
+        train_loss = 0
+        for inputs, targets in train_loader:
+            # TODO: Forward pass
+            # TODO: Compute loss
+            # TODO: Backward pass
+            # TODO: Optimizer step
+            
+        # Validation phase
+        model.eval()
+        val_loss = 0
+        with torch.no_grad():
+            for inputs, targets in val_loader:
+                # TODO: Compute validation loss
+                
+        # TODO: Step learning rate scheduler
+        # TODO: Print progress
+        
+    return model
+\end{lstlisting}
+
+\textbf{Monitor:}
+\begin{itemize}
+\item Training loss should decrease
+\item Validation loss should decrease (watch for overfitting!)
+\item Relative L2 error
+\end{itemize}
+\end{exercise}
+
+\begin{exercise}[4.3: Resolution Invariance Experiment]
+\textbf{Goal:} Verify resolution invariance empirically.
+
+\textbf{Task:}
+\begin{enumerate}[label=\alph*)]
+\item Train your FNO on data at resolution $n=64$.
+
+\item Test on data at resolutions: $n=32, 64, 128, 256$.
+
+\item For each resolution, compute:
+\begin{itemize}
+\item Prediction error
+\item Inference time
+\item Memory usage
+\end{itemize}
+
+\item Create plots showing:
+\begin{itemize}
+\item Error vs. resolution
+\item Qualitative comparisons (plot predictions)
+\end{itemize}
+\end{enumerate}
+
+\textbf{Expected Result:} Error should remain roughly constant across resolutions (up to discretization effects). This proves resolution invariance!
+
+\textbf{Bonus:} Compare with a standard CNN trained on the same data. Show that CNN fails on different resolutions.
+\end{exercise}
+
+% ----------------------------------------
+\subsection{Exercise Set 5: Advanced Topics}
+
+\begin{exercise}[5.1: Implement SpectralConv2d]
+\textbf{Goal:} Extend to 2D problems.
+
+\textbf{Task:}
+\begin{enumerate}[label=\alph*)]
+\item Implement \texttt{SpectralConv2d} following the 1D version.
+
+\item Key differences:
+\begin{itemize}
+\item Use \texttt{torch.fft.rfft2} and \texttt{torch.fft.irfft2}
+\item Need two weight matrices (upper and lower modes)
+\item Einstein notation: \texttt{"bixy,ioxy->boxy"}
+\end{itemize}
+
+\item Test on 2D data (e.g., images or 2D PDE solutions).
+\end{enumerate}
+
+\textbf{Skeleton:}
+\begin{lstlisting}
+class SpectralConv2d(nn.Module):
+    def __init__(self, in_channels, out_channels, modes1, modes2):
+        # TODO: Two weight matrices
+        
+    def compl_mul2d(self, input, weights):
+        # TODO: 2D complex multiplication
+        
+    def forward(self, x):
+        # TODO: rfft2, multiply corners, irfft2
+\end{lstlisting}
+\end{exercise}
+
+\begin{exercise}[5.2: Hyperparameter Tuning]
+\textbf{Goal:} Understand the impact of hyperparameters.
+
+\textbf{Task:} Systematically vary and test:
+\begin{itemize}
+\item Number of modes: $k_{\max} = 8, 16, 32$
+\item Width: $d = 16, 32, 64, 128$
+\item Number of layers: $L = 2, 3, 4, 5$
+\item Activation functions: Tanh, ReLU, GELU
+\end{itemize}
+
+For each configuration:
+\begin{enumerate}[label=\alph*)]
+\item Count parameters
+\item Measure training time per epoch
+\item Record final validation error
+\end{enumerate}
+
+\textbf{Questions:}
+\begin{itemize}
+\item What is the optimal trade-off between accuracy and efficiency?
+\item Does more always mean better?
+\item Which hyperparameters matter most?
+\end{itemize}
+\end{exercise}
+
+\begin{exercise}[5.3: Apply to a Real PDE]
+\textbf{Goal:} Solve a PDE of your choice.
+
+\textbf{Suggested PDEs:}
+\begin{itemize}
+\item Burgers' equation: $u_t + uu_x = \nu u_{xx}$
+\item Heat equation: $u_t = \alpha u_{xx}$
+\item Wave equation: $u_{tt} = c^2 u_{xx}$
+\item Navier-Stokes (2D)
+\end{itemize}
+
+\textbf{Pipeline:}
+\begin{enumerate}[label=\alph*)]
+\item Generate or obtain training data
+\item Train FNO to learn the solution operator
+\item Test on unseen parameters
+\item Compare with traditional numerical solver (accuracy and speed)
+\end{enumerate}
+
+\textbf{Report:}
+\begin{itemize}
+\item Problem description
+\item Data generation procedure
+\item Model architecture and training
+\item Results and visualizations
+\item Comparison with baseline
+\end{itemize}
+\end{exercise}
+
+% ----------------------------------------
+\subsection{Exercise Set 6: Understanding Limitations}
+
+\begin{exercise}[6.1: When FNO Fails]
+\textbf{Goal:} Understand the limitations.
+
+\textbf{Task:} Test FNO on:
+\begin{enumerate}[label=\alph*)]
+\item Discontinuous functions (e.g., step functions, shocks)
+\item High-frequency functions (fast oscillations)
+\item Functions with different boundary conditions than training
+\item Extrapolation beyond the training distribution
+\end{enumerate}
+
+\textbf{Questions:}
+\begin{itemize}
+\item Where does FNO struggle?
+\item Why does mode truncation cause issues with discontinuities?
+\item How could you modify FNO to handle these cases?
+\end{itemize}
+\end{exercise}
+
+\begin{exercise}[6.2: Comparison with Other Architectures]
+\textbf{Goal:} Contextualize FNO in the operator learning landscape.
+
+\textbf{Task:}
+\begin{enumerate}[label=\alph*)]
+\item Implement a simple baseline:
+\begin{itemize}
+\item Fully connected network
+\item CNN
+\item U-Net
+\end{itemize}
+
+\item Train all models on the same task.
+
+\item Compare:
+\begin{itemize}
+\item Parameter count
+\item Training time
+\item Inference time
+\item Accuracy on same resolution
+\item Accuracy on different resolutions (resolution invariance)
+\end{itemize}
+\end{enumerate}
+
+\textbf{Create a table summarizing results.}
+
+\textbf{Expected Finding:} FNO shines in resolution invariance but may not always be the most accurate on a fixed resolution.
+\end{exercise}
+
+% ============================================
+\section{Advanced Theoretical Topics}
+
+\subsection{Universal Approximation for Operators}
+
+\begin{theorem}{Universal Approximation (Informal)}{}
+Under mild conditions, neural operators (including FNO) can approximate any continuous operator between function spaces arbitrarily well, given sufficient width and depth.
+\end{theorem}
+
+This extends the classical universal approximation theorem from functions to operators!
+
+\subsection{Convergence Analysis}
+
+The approximation error of FNO can be decomposed as:
+\begin{equation}
+\text{Total Error} = \underbrace{\text{Approximation Error}}_{\text{Model capacity}} + \underbrace{\text{Discretization Error}}_{\text{Grid resolution}} + \underbrace{\text{Training Error}}_{\text{Optimization}}
+\end{equation}
+
+\textbf{Key Insights:}
+\begin{itemize}
+\item \textbf{Approximation error} decreases with more modes and layers
+\item \textbf{Discretization error} is intrinsic to the problem, not the architecture
+\item \textbf{Training error} can be minimized with proper optimization
+\end{itemize}
+
+FNO's resolution invariance means the approximation error is independent of the discretization!
+
+\subsection{Connection to Green's Functions}
+
+The integral kernel operator learned by FNO can be interpreted as a learned Green's function:
+\begin{equation}
+(\mathcal{K}v)(x) = \int_\Omega G(x, y) v(y) dy
+\end{equation}
+
+where $G(x,y)$ is implicitly represented through its Fourier modes.
+
+This connects FNO to classical mathematical physics!
+
+% ============================================
+\section{Implementation Best Practices}
+
+\subsection{Memory Efficiency}
+
+\begin{itemize}
+\item \textbf{Gradient Checkpointing:} For very deep FNOs, use activation checkpointing to trade compute for memory.
+
+\item \textbf{Mixed Precision:} FNO works well with FP16 training:
+\begin{lstlisting}
+from torch.cuda.amp import autocast, GradScaler
+
+scaler = GradScaler()
+
+with autocast():
+    output = model(input)
+    loss = loss_fn(output, target)
+
+scaler.scale(loss).backward()
+scaler.step(optimizer)
+scaler.update()
+\end{lstlisting}
+
+\item \textbf{Reduced Modes During Training:} Start with fewer modes, increase later.
+\end{itemize}
+
+\subsection{Numerical Stability}
+
+\begin{itemize}
+\item \textbf{Weight Initialization:} Proper initialization of complex weights matters:
+\begin{lstlisting}
+# Use Xavier initialization scaled for complex numbers
+std = np.sqrt(2.0 / (in_channels * out_channels))
+weights = nn.Parameter(
+    std * torch.randn(..., dtype=torch.cfloat)
+)
+\end{lstlisting}
+
+\item \textbf{Normalization:} Consider layer normalization or instance normalization between Fourier layers.
+
+\item \textbf{Residual Connections:} The skip connection $W v_t$ is crucial for training stability.
+\end{itemize}
+
+\subsection{Debugging Checklist}
+
+When your FNO isn't working:
+\begin{enumerate}
+\item \textbf{Check shapes:} Print tensor shapes after each operation
+\item \textbf{Verify FFT:} Ensure rfft/irfft reconstructs the input
+\item \textbf{Inspect Fourier modes:} Are the learned weights reasonable?
+\item \textbf{Test on simple data:} Can it fit a single example?
+\item \textbf{Check gradients:} Use \texttt{torch.autograd.gradcheck}
+\item \textbf{Visualize predictions:} Plot actual vs predicted
+\item \textbf{Monitor losses:} Both MSE and relative L2 error
+\item \textbf{Check for NaNs:} Add assertions throughout
+\end{enumerate}
+
+% ============================================
+\section{Further Resources and Extensions}
+
+\subsection{Recommended Papers}
+
+\begin{enumerate}
+\item \textbf{Original FNO Paper:} Li, Z., et al. (2020). ``Fourier Neural Operator for Parametric Partial Differential Equations.'' \textit{arXiv:2010.08895}
+
+\item \textbf{Survey:} Kovachki, N., et al. (2021). ``Neural Operator: Learning Maps Between Function Spaces.'' \textit{arXiv:2108.08481}
+
+\item \textbf{Improvements:} Various papers on factorized FNO, adaptive FNO, etc.
+\end{enumerate}
+
+\subsection{Code Repositories}
+
+\begin{itemize}
+\item Official: \url{https://github.com/neuraloperator/neuraloperator}
+\item PyTorch implementations with tutorials
+\item Pre-trained models available
+\end{itemize}
+
+\subsection{Related Architectures}
+
+\begin{itemize}
+\item \textbf{DeepONet:} Branch-Trunk architecture
+\item \textbf{Graph Neural Operators:} For irregular meshes
+\item \textbf{Transformer-based Operators:} Attention in function space
+\item \textbf{Physics-Informed FNOs:} Incorporating PDE constraints
+\end{itemize}
+
+\subsection{Open Problems}
+
+\begin{itemize}
+\item \textbf{Handling Discontinuities:} Better representations for shocks
+\item \textbf{Adaptive Resolution:} Learned multi-scale representations
+\item \textbf{Uncertainty Quantification:} Bayesian neural operators
+\item \textbf{Multi-Physics:} Coupled operators for complex systems
+\end{itemize}
+
+% ============================================
+\section{Conclusion}
+
+You now have a comprehensive understanding of Fourier Neural Operators:
+
+\begin{itemize}
+\item \textbf{Theory:} Why they work (Fourier analysis, operator theory)
+\item \textbf{Architecture:} How they're designed (lifting, Fourier layers, projection)
+\item \textbf{Resolution Invariance:} The key innovation (mode truncation, frequency domain learning)
+\item \textbf{Implementation:} PyTorch tricks and best practices
+\item \textbf{Practice:} Through hands-on exercises
+\end{itemize}
+
+\begin{keypoint}
+\textbf{The Central Insight of FNOs:}
+
+By learning in the frequency domain and truncating to low modes, FNOs:
+\begin{enumerate}
+\item Learn operators in continuous function space
+\item Are independent of discretization
+\item Generalize across resolutions
+\item Efficiently capture global dependencies
+\end{enumerate}
+
+This is a paradigm shift from pixel-based to physics-based learning!
+\end{keypoint}
+
+\subsection{Next Steps}
+
+\begin{enumerate}
+\item Work through all exercises systematically
+\item Implement FNO from scratch
+\item Apply to your own PDE problem
+\item Read the original papers
+\item Explore the official codebase
+\item Consider extensions and improvements
+\end{enumerate}
+
+\vspace{1em}
+
+\textit{Remember: The best way to understand FNO is to implement it yourself. Use this tutorial as your guide, but don't hesitate to experiment and explore!}
+
+% ============================================
+\appendix
+
+\section{Appendix A: Mathematical Background}
+
+\subsection{Fourier Series Review}
+
+For a periodic function $f: [0, L] \to \R$:
+\begin{equation}
+f(x) = \sum_{k=-\infty}^{\infty} c_k e^{2\pi i k x / L}
+\end{equation}
+
+where the Fourier coefficients are:
+\begin{equation}
+c_k = \frac{1}{L} \int_0^L f(x) e^{-2\pi i k x / L} dx
+\end{equation}
+
+\subsection{Discrete Fourier Transform}
+
+For discrete samples $\{f_n\}_{n=0}^{N-1}$:
+\begin{equation}
+\hat{f}_k = \sum_{n=0}^{N-1} f_n e^{-2\pi i k n / N}, \quad k = 0, \ldots, N-1
+\end{equation}
+
+The FFT computes this in $O(N \log N)$ time instead of $O(N^2)$.
+
+\subsection{Convolution Theorem}
+
+Convolution in physical space is multiplication in Fourier space:
+\begin{equation}
+\widehat{(f * g)} = \hat{f} \cdot \hat{g}
+\end{equation}
+
+This is why FNO is so efficient!
+
+\section{Appendix B: PyTorch FFT Functions}
+
+\subsection{Real FFT Functions}
+
+\begin{lstlisting}
+# 1D real FFT
+torch.fft.rfft(input, n=None, dim=-1, norm=None)
+# Returns complex tensor of size (..., n//2 + 1)
+
+# 1D inverse real FFT
+torch.fft.irfft(input, n=None, dim=-1, norm=None)
+# Returns real tensor of size (..., n)
+
+# 2D real FFT
+torch.fft.rfft2(input, s=None, dim=(-2,-1), norm=None)
+
+# 2D inverse real FFT
+torch.fft.irfft2(input, s=None, dim=(-2,-1), norm=None)
+\end{lstlisting}
+
+\textbf{Key Points:}
+\begin{itemize}
+\item \texttt{n} specifies output length (useful for padding/truncation)
+\item \texttt{norm} can be 'forward', 'backward', or 'ortho'
+\item Real FFT exploits symmetry: $\hat{f}(-k) = \overline{\hat{f}(k)}$
+\item Output is complex even though input is real
+\end{itemize}
+
+\section{Appendix C: Common Errors and Solutions}
+
+\begin{center}
+\begin{tabular}{|p{6cm}|p{9cm}|}
+\hline
+\textbf{Error} & \textbf{Solution} \\
+\hline
+Shape mismatch in FFT & Ensure input has correct dimensions. FFT operates on last dimension. \\
+\hline
+Complex dtype mismatch & Check all operations preserve \texttt{torch.cfloat} dtype. \\
+\hline
+Mode index out of bounds & Ensure \texttt{modes $\leq$ n\_points//2 + 1} \\
+\hline
+NaN in training & Check learning rate, weight initialization, and gradient norms. \\
+\hline
+Model doesn't learn & Verify data preprocessing, check if problem is learnable, try simpler task first. \\
+\hline
+Resolution invariance fails & Ensure you're using rfft/irfft correctly and modes are set appropriately. \\
+\hline
+\end{tabular}
+\end{center}
+
+% ============================================
+\section*{Acknowledgments}
+
+This tutorial is based on the seminal work of Zongyi Li, Nikola Kovachki, Kamyar Azizzadenesheli, Burigede Liu, Kaushik Bhattacharya, Andrew Stuart, and Anima Anandkumar. Their paper ``Fourier Neural Operator for Parametric Partial Differential Equations'' revolutionized operator learning.
+
+% ============================================
+\end{document}

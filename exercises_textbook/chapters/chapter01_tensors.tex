@@ -1,0 +1,985 @@
+% =============================================
+% CHAPTER 1: TENSOR FOUNDATIONS AND COMPUTATION
+% =============================================
+
+\chapter{Tensor Foundations and Computation}
+\label{ch:tensors}
+
+\begin{quote}
+\textit{"In the beginning was the tensor, and the tensor was with gradient, and the tensor was computation."} \\
+— Ancient PyTorch Proverb
+\end{quote}
+
+\section{Introduction: Why Tensors?}
+
+Everything in PyTorch—from your input data (a simulation mesh, a time-series, an image) to the parameters of your neural network (weights and biases)—is represented as a \concept{tensor}.
+
+If you have used NumPy, you are already familiar with the core concept: the \code{ndarray}. A PyTorch tensor is, at its essence, a multi-dimensional array. So why not just use NumPy?
+
+\textbf{Three fundamental reasons:}
+\begin{enumerate}
+    \item \textbf{GPU Acceleration:} PyTorch tensors can be effortlessly moved to Graphics Processing Units (GPUs). This enables \textit{massive} parallelization of computations, transforming operations that would take hours on a CPU into minutes or seconds. For scientific computing and deep learning at scale, this is essential.
+    
+    \item \textbf{Automatic Differentiation:} This is the beating heart of modern deep learning. PyTorch can automatically compute gradients (vectors of partial derivatives) of any output with respect to any input. This mechanism, called \pytorch{autograd}, enables gradient-based optimization. We dedicate Chapter 2 to this crucial concept.
+    
+    \item \textbf{Ecosystem Integration:} PyTorch tensors integrate seamlessly with a vast ecosystem of neural network layers (\pytorch{torch.nn}), optimizers (\pytorch{torch.optim}), and utilities specifically designed for deep learning workflows.
+\end{enumerate}
+
+In this chapter, we build from first principles. We begin with the mathematical definition of tensors, progress through their computational properties, and culminate in mastering the PyTorch tensor API with all its subtleties and power.
+
+\section{Theoretical Foundations}
+
+\subsection{Mathematical Definition}
+
+\begin{definition}[Tensor]
+A \concept{tensor} is a multi-dimensional array of numerical values. Formally, a tensor of order $n$ (also called rank $n$) is an element of the tensor product of $n$ vector spaces:
+\[
+\mathcal{T} \in V_1 \otimes V_2 \otimes \cdots \otimes V_n
+\]
+
+More practically, for our purposes:
+\begin{itemize}
+    \item A \textbf{scalar} is a 0D tensor (a single number): $x \in \R$
+    \item A \textbf{vector} is a 1D tensor: $\vect{x} \in \R^n$
+    \item A \textbf{matrix} is a 2D tensor: $\mat{X} \in \R^{m \times n}$
+    \item A \textbf{3D tensor} might represent: $\mat{X} \in \R^{h \times w \times c}$ (image with height, width, channels)
+    \item A \textbf{4D tensor} might represent: $\mat{X} \in \R^{b \times c \times h \times w}$ (batch of images)
+\end{itemize}
+
+The \concept{shape} or \concept{dimensions} of a tensor describe the size along each axis.
+\end{definition}
+
+\begin{profnote}[Why "Tensor" and Not Just "Array"?]
+The term "tensor" comes from differential geometry and physics, where tensors are geometric objects that transform in specific ways under coordinate changes. In deep learning, we use the term more loosely to mean "multi-dimensional array." 
+
+However, the connection is not entirely superficial: neural networks learn representations that should be invariant (or equivariant) to certain transformations—this is the geometric perspective on deep learning. When we design convolutional networks to be translation-equivariant or use group convolutions, we are encoding geometric structure into our "tensors."
+\end{profnote}
+
+\subsection{Key Properties and Operations}
+
+Understanding tensor operations is crucial for both computational efficiency and numerical stability in scientific computing.
+
+\subsubsection{Element-wise Operations}
+
+Element-wise (or pointwise) operations apply a function independently to each element:
+\[
+(\mat{A} + \mat{B})_{ij} = A_{ij} + B_{ij}
+\]
+\[
+(\mat{A} \odot \mat{B})_{ij} = A_{ij} \cdot B_{ij} \quad \text{(Hadamard product)}
+\]
+
+These operations are trivially parallelizable and form the basis of many neural network operations (ReLU, Sigmoid, etc.).
+
+\subsubsection{Reduction Operations}
+
+Reductions aggregate values along one or more dimensions:
+\[
+\text{sum}(\mat{A}) = \sum_{i,j} A_{ij}, \quad \text{mean}(\mat{A}) = \frac{1}{mn}\sum_{i,j} A_{ij}
+\]
+
+In deep learning, we frequently reduce over the batch dimension to compute average loss, or over spatial dimensions in global pooling.
+
+\subsubsection{Broadcasting}
+
+\concept{Broadcasting} is perhaps the most powerful—and most misunderstood—feature of tensor operations. It allows operations between tensors of different shapes by automatically expanding dimensions.
+
+\begin{definition}[Broadcasting Rules]
+Two tensors are \textbf{compatible for broadcasting} if, for each dimension (working right-to-left):
+\begin{enumerate}
+    \item The dimensions are equal, OR
+    \item One of the dimensions is 1, OR
+    \item One of the tensors doesn't have this dimension (can be virtually expanded)
+\end{enumerate}
+\end{definition}
+
+\begin{example}[Broadcasting Examples]
+\begin{align*}
+\text{Shape } (3, 4) + \text{Shape } (4,) &\to \text{Shape } (3, 4) \quad \checkmark \\
+\text{Shape } (3, 1, 5) + \text{Shape } (3, 4, 1) &\to \text{Shape } (3, 4, 5) \quad \checkmark \\
+\text{Shape } (3, 4) + \text{Shape } (3,) &\to \text{Error!} \quad \times
+\end{align*}
+
+The last example fails because the shapes align as:
+\begin{verbatim}
+    (3, 4)
+       (3,)  <- This 3 aligns with 4, not compatible!
+\end{verbatim}
+\end{example}
+
+\begin{warning}[Silent Broadcasting Bugs]
+Broadcasting can cause subtle bugs that compile and run but produce incorrect results. Consider normalizing each feature of a dataset:
+
+\textbf{Wrong:}
+\begin{lstlisting}
+X = torch.randn(100, 10)  # 100 samples, 10 features
+mean = X.mean(dim=0)       # Shape: (10,)
+X_normalized = X - mean    # Works! But wrong if you meant something else
+\end{lstlisting}
+
+\textbf{Right (for per-sample normalization):}
+\begin{lstlisting}
+mean = X.mean(dim=1, keepdim=True)  # Shape: (100, 1)
+X_normalized = X - mean              # Broadcasts correctly
+\end{lstlisting}
+
+Always verify shapes explicitly during development!
+\end{warning}
+
+\subsection{Memory Layout and Contiguity}
+
+Understanding memory layout is critical for performance in scientific computing.
+
+\begin{definition}[Contiguous Tensors]
+A tensor is \concept{contiguous} if its elements are stored in a single, contiguous block of memory in row-major (C-style) order. Operations like \pytorch{view()} require contiguous tensors, while operations like \pytorch{reshape()} can work with non-contiguous tensors (by copying if necessary).
+\end{definition}
+
+\begin{pytorchcmd}[Memory Contiguity Rules]
+\begin{itemize}
+    \item \textbf{Transposing} makes tensors non-contiguous:
+\begin{lstlisting}
+x = torch.randn(3, 4)
+y = x.t()  # Non-contiguous!
+\end{lstlisting}
+
+    \item \textbf{Check contiguity:} \code{tensor.is\_contiguous()}
+    \item \textbf{Make contiguous:} \code{tensor.contiguous()}
+    \item \textbf{view() vs reshape():}
+        \begin{itemize}
+            \item \code{view()} requires contiguous memory, returns a view (no copy)
+            \item \code{reshape()} works on any tensor, copies if necessary
+            \item Use \code{view()} when you know tensor is contiguous (faster, explicit)
+            \item Use \code{reshape()} when you're unsure (safer, more flexible)
+        \end{itemize}
+\end{itemize}
+\end{pytorchcmd}
+
+\subsection{Data Types and Numerical Precision}
+
+The choice of data type (\pytorch{dtype}) has profound implications for both performance and numerical stability.
+
+\begin{table}[h]
+\centering
+\caption{Common PyTorch Data Types}
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{PyTorch dtype} & \textbf{NumPy equivalent} & \textbf{Size} & \textbf{Range/Precision} \\ \midrule
+\code{torch.float32} & \code{np.float32} & 32 bits & $\sim 10^{-38}$ to $10^{38}$, 7 digits \\
+\code{torch.float64} & \code{np.float64} & 64 bits & $\sim 10^{-308}$ to $10^{308}$, 15 digits \\
+\code{torch.float16} & \code{np.float16} & 16 bits & $\sim 10^{-8}$ to $10^{4}$, 3 digits \\
+\code{torch.bfloat16} & — & 16 bits & Same range as float32, 3 digits \\
+\code{torch.int32} & \code{np.int32} & 32 bits & $-2^{31}$ to $2^{31}-1$ \\
+\code{torch.int64} & \code{np.int64} & 64 bits & $-2^{63}$ to $2^{63}-1$ \\
+\code{torch.bool} & \code{np.bool\_} & 8 bits & True or False \\ \bottomrule
+\end{tabular}
+\end{table}
+
+\begin{profnote}[Float32 vs Float64 in Scientific ML]
+Traditional scientific computing often uses \code{float64} (double precision) for numerical stability. However, deep learning typically uses \code{float32} because:
+
+\begin{enumerate}
+    \item \textbf{Memory:} Models can have billions of parameters; float32 halves memory usage
+    \item \textbf{Speed:} GPU operations are often 2-10× faster with float32
+    \item \textbf{Sufficient precision:} The stochastic nature of SGD acts as regularization; extra precision rarely helps
+\end{enumerate}
+
+\textbf{When to use float64:}
+\begin{itemize}
+    \item Physics-Informed Neural Networks (PINNs) computing high-order derivatives
+    \item Ill-conditioned problems (e.g., inverting nearly-singular matrices)
+    \item When numerical errors accumulate (very deep networks, long sequences)
+    \item Scientific simulations requiring strict conservation laws
+\end{itemize}
+
+\textbf{Modern approach:} Mixed precision training uses float16 for speed and float32 for critical operations.
+\end{profnote}
+
+\section{PyTorch Implementation Deep Dive}
+
+\subsection{Creating Tensors: The Complete API}
+
+Let's explore every important way to create tensors in PyTorch, with rationale for each.
+
+\subsubsection{From Explicit Values}
+
+\begin{lstlisting}
+import torch
+import numpy as np
+
+# From Python lists
+x = torch.tensor([1, 2, 3, 4])  # Shape: (4,), dtype inferred as int64
+y = torch.tensor([[1.0, 2.0], [3.0, 4.0]])  # Shape: (2, 2), dtype: float32
+
+# From NumPy arrays (shares memory if possible!)
+np_array = np.array([1, 2, 3])
+z = torch.from_numpy(np_array)  # Zero-copy if np_array is contiguous
+
+# Explicitly specify dtype and device
+x = torch.tensor([1, 2, 3], dtype=torch.float32, device='cuda')
+\end{lstlisting}
+
+\begin{warning}[torch.tensor() vs torch.Tensor()]
+\begin{itemize}
+    \item \code{torch.tensor()} — Function that creates a new tensor, infers dtype
+    \item \code{torch.Tensor()} — Class constructor, always creates \code{float32} tensor
+\end{itemize}
+
+\textbf{Prefer \code{torch.tensor()} for clarity:}
+\begin{lstlisting}
+x = torch.tensor([1, 2, 3])      # Infers dtype=int64
+y = torch.Tensor([1, 2, 3])       # Forces dtype=float32 (!!)
+\end{lstlisting}
+\end{warning}
+
+\subsubsection{Initialization Patterns}
+
+\begin{lstlisting}
+# Zeros and ones
+zeros = torch.zeros(3, 4)                    # All zeros
+ones = torch.ones(2, 3, dtype=torch.float64) # All ones
+identity = torch.eye(5)                      # Identity matrix
+
+# Uninitialized (faster, but contains garbage!)
+uninitialized = torch.empty(1000, 1000)  # Use when you'll overwrite immediately
+
+# From ranges
+arange = torch.arange(0, 10, 2)      # [0, 2, 4, 6, 8]
+linspace = torch.linspace(0, 1, 5)   # [0.0, 0.25, 0.5, 0.75, 1.0]
+\end{lstlisting}
+
+\subsubsection{Random Initialization}
+
+Random initialization is crucial for breaking symmetry in neural networks.
+
+\begin{lstlisting}
+# Uniform distribution [0, 1)
+uniform = torch.rand(3, 4)
+
+# Standard normal distribution N(0, 1)
+normal = torch.randn(3, 4)
+
+# Random integers
+randint = torch.randint(0, 10, (3, 4))  # Random ints in [0, 10)
+
+# Random permutation (useful for shuffling)
+perm = torch.randperm(10)  # Random permutation of 0..9
+\end{lstlisting}
+
+\begin{experttrick}[Reproducible Randomness]
+For reproducible experiments (critical in scientific computing):
+
+\begin{lstlisting}
+# Set global seed
+torch.manual_seed(42)
+
+# For CUDA
+torch.cuda.manual_seed(42)
+torch.cuda.manual_seed_all(42)  # For multi-GPU
+
+# For full reproducibility (may impact performance)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+\end{lstlisting}
+
+\textbf{Note:} Full reproducibility across different hardware is not guaranteed. Use seeds for debugging and validation, not for critical production randomness.
+\end{experttrick}
+
+\subsubsection{Creating Tensors with Same Shape}
+
+Often you need a new tensor with the same shape as an existing one:
+
+\begin{lstlisting}
+x = torch.randn(3, 4)
+
+# Same shape, filled with zeros/ones
+zeros_like = torch.zeros_like(x)
+ones_like = torch.ones_like(x)
+
+# Same shape, random
+rand_like = torch.rand_like(x)
+randn_like = torch.randn_like(x)
+
+# Can override dtype
+int_version = torch.zeros_like(x, dtype=torch.int64)
+\end{lstlisting}
+
+\subsection{Tensor Operations: The Idioms}
+
+\subsubsection{Indexing and Slicing}
+
+PyTorch indexing works like NumPy, but with some powerful extensions:
+
+\begin{lstlisting}
+x = torch.randn(4, 5, 6)
+
+# Basic slicing
+first_row = x[0]        # Shape: (5, 6)
+submatrix = x[1:3, :, 2:4]  # Shape: (2, 5, 2)
+
+# Advanced indexing
+indices = torch.tensor([0, 2, 3])
+selected = x[indices]   # Shape: (3, 5, 6)
+
+# Boolean masking
+mask = x > 0
+positive_values = x[mask]  # 1D tensor of positive values
+
+# Ellipsis (...) for all remaining dimensions
+batch_first = x[..., 0]  # Equivalent to x[:, :, 0]
+\end{lstlisting}
+
+\begin{pytorchcmd}[In-Place Operations]
+Operations ending with underscore (\code{\_}) modify tensors in-place:
+
+\begin{lstlisting}
+x = torch.randn(3, 4)
+
+# Out-of-place (creates new tensor)
+y = x.add(1)     # x unchanged, y = x + 1
+
+# In-place (modifies x)
+x.add_(1)        # x modified: x = x + 1
+
+# Common in-place ops
+x.zero_()        # Fill with zeros
+x.fill_(3.14)    # Fill with value
+x.clamp_(0, 1)   # Clamp to range
+\end{lstlisting}
+
+\textbf{When to use in-place:}
+\begin{itemize}
+    \item Memory savings when working with large tensors
+    \item Optimizer updates: \code{param.data.sub\_(lr * grad)}
+\end{itemize}
+
+\textbf{When NOT to use in-place:}
+\begin{itemize}
+    \item On tensors that require gradients (breaks autograd!)
+    \item When you need the original value later
+    \item In complex computational graphs (debugging nightmare)
+\end{itemize}
+\end{pytorchcmd}
+
+\subsubsection{Shape Manipulation}
+
+\begin{lstlisting}
+x = torch.randn(2, 3, 4)
+
+# View vs Reshape (discussed earlier)
+y = x.view(6, 4)       # Requires contiguous, returns view
+z = x.reshape(6, 4)    # Always works, may copy
+
+# Squeeze and unsqueeze (add/remove dimensions of size 1)
+a = torch.randn(1, 3, 1, 4)
+b = a.squeeze()         # Shape: (3, 4) - removes all size-1 dims
+c = a.squeeze(0)        # Shape: (3, 1, 4) - removes only dim 0
+d = c.unsqueeze(1)      # Shape: (3, 1, 1, 4) - adds dim at position 1
+
+# Transpose (swap two dimensions)
+x = torch.randn(2, 3, 4)
+y = x.transpose(0, 1)   # Shape: (3, 2, 4)
+z = x.transpose(-1, -2) # Last two dims: (2, 4, 3)
+
+# Permute (general reordering of dimensions)
+x = torch.randn(2, 3, 4, 5)  # (batch, channel, height, width)
+y = x.permute(0, 2, 3, 1)    # (batch, height, width, channel)
+
+# Flatten
+x = torch.randn(2, 3, 4)
+y = x.flatten()          # Shape: (24,)
+z = x.flatten(1)         # Flatten from dim 1: (2, 12)
+\end{lstlisting}
+
+\begin{profnote}[Dimension Ordering Conventions]
+Different deep learning frameworks use different conventions:
+
+\textbf{PyTorch (and many CV models):}
+\begin{itemize}
+    \item Images: (Batch, Channels, Height, Width) — \code{(B, C, H, W)}
+    \item Sequences: (Batch, Sequence, Features) — \code{(B, S, F)}
+    \item or (Sequence, Batch, Features) — \code{(S, B, F)} for RNNs
+\end{itemize}
+
+\textbf{TensorFlow/Keras:}
+\begin{itemize}
+    \item Images: (Batch, Height, Width, Channels) — \code{(B, H, W, C)}
+\end{itemize}
+
+The PyTorch convention aligns with cuDNN's optimized implementations. Always check documentation when using pre-trained models!
+\end{profnote}
+
+\subsubsection{Concatenation and Stacking}
+
+\begin{lstlisting}
+x = torch.randn(2, 3)
+y = torch.randn(2, 3)
+z = torch.randn(2, 3)
+
+# Concatenate along existing dimension
+cat0 = torch.cat([x, y, z], dim=0)  # Shape: (6, 3)
+cat1 = torch.cat([x, y, z], dim=1)  # Shape: (2, 9)
+
+# Stack (creates new dimension)
+stack0 = torch.stack([x, y, z], dim=0)  # Shape: (3, 2, 3)
+stack1 = torch.stack([x, y, z], dim=1)  # Shape: (2, 3, 3)
+
+# Split (opposite of cat)
+chunks = torch.chunk(cat0, 3, dim=0)  # List of 3 tensors, each (2, 3)
+split = torch.split(cat0, [2, 2, 2], dim=0)  # Custom split sizes
+\end{lstlisting}
+
+\subsection{GPU Operations and Device Management}
+
+Moving computation to GPU is trivial in PyTorch, but has important subtleties.
+
+\subsubsection{Basic GPU Usage}
+
+\begin{lstlisting}
+# Check if CUDA is available
+if torch.cuda.is_available():
+    device = torch.device('cuda')
+else:
+    device = torch.device('cpu')
+
+# Create tensor directly on GPU
+x_gpu = torch.randn(1000, 1000, device='cuda')
+
+# Move existing tensor to GPU
+x_cpu = torch.randn(1000, 1000)
+x_gpu = x_cpu.to('cuda')
+# or
+x_gpu = x_cpu.cuda()  # Shorthand, but less flexible
+
+# Move back to CPU
+x_cpu = x_gpu.to('cpu')
+# or
+x_cpu = x_gpu.cpu()
+
+# Check device
+print(x_gpu.device)  # cuda:0
+\end{lstlisting}
+
+\begin{pytorchcmd}[Device-Agnostic Code]
+Write code that works on both CPU and GPU:
+
+\begin{lstlisting}
+# At the top of your script
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+# Create tensors
+x = torch.randn(100, 100, device=device)
+
+# Or move existing tensors
+x = x.to(device)
+
+# For neural network models
+model = MyModel()
+model.to(device)
+
+# All subsequent operations inherit device
+y = model(x)  # y will be on same device as x
+\end{lstlisting}
+\end{pytorchcmd}
+
+\subsubsection{Multi-GPU Considerations}
+
+\begin{lstlisting}
+# Check number of GPUs
+num_gpus = torch.cuda.device_count()
+
+# Specify which GPU
+x = torch.randn(100, 100, device='cuda:0')  # First GPU
+y = torch.randn(100, 100, device='cuda:1')  # Second GPU
+
+# Operations between tensors on different GPUs will fail!
+# z = x + y  # ERROR!
+
+# Must move to same device first
+y = y.to('cuda:0')
+z = x + y  # Now works
+\end{lstlisting}
+
+\begin{experttrick}[GPU Memory Management]
+GPUs have limited memory. Here are strategies for large models:
+
+\begin{lstlisting}
+# Clear CUDA cache
+torch.cuda.empty_cache()
+
+# Check memory usage
+print(torch.cuda.memory_allocated() / 1e9)  # GB
+print(torch.cuda.memory_reserved() / 1e9)   # GB
+
+# Delete tensors explicitly
+del large_tensor
+torch.cuda.empty_cache()
+
+# Use gradient checkpointing for very deep networks
+# (recompute activations instead of storing them)
+from torch.utils.checkpoint import checkpoint
+
+# Context manager to avoid tracking gradients (saves memory)
+with torch.no_grad():
+    output = model(input)  # No computational graph built
+\end{lstlisting}
+
+\textbf{Memory optimization strategies:}
+\begin{enumerate}
+    \item Use mixed precision (\code{torch.cuda.amp})
+    \item Reduce batch size
+    \item Use gradient accumulation
+    \item Enable gradient checkpointing
+    \item Use \code{.detach()} to remove tensors from computational graph
+\end{enumerate}
+\end{experttrick}
+
+\subsection{Interoperability with NumPy}
+
+\begin{lstlisting}
+import numpy as np
+
+# NumPy to PyTorch (zero-copy if possible)
+np_array = np.array([[1, 2], [3, 4]])
+torch_tensor = torch.from_numpy(np_array)
+
+# Modifying one modifies the other (they share memory!)
+np_array[0, 0] = 999
+print(torch_tensor[0, 0])  # 999
+
+# PyTorch to NumPy (also shares memory if on CPU)
+torch_tensor = torch.randn(2, 3)
+np_array = torch_tensor.numpy()
+
+# For GPU tensors, must move to CPU first
+gpu_tensor = torch.randn(2, 3, device='cuda')
+np_array = gpu_tensor.cpu().numpy()
+\end{lstlisting}
+
+\begin{warning}[Memory Sharing Gotcha]
+When converting between NumPy and PyTorch, they often share memory:
+
+\begin{lstlisting}
+np_arr = np.array([1, 2, 3])
+torch_arr = torch.from_numpy(np_arr)
+
+np_arr[0] = 999
+print(torch_arr)  # tensor([999, 2, 3]) - SHARED MEMORY!
+\end{lstlisting}
+
+To avoid this, explicitly copy:
+\begin{lstlisting}
+torch_arr = torch.tensor(np_arr)  # Creates new copy
+# or
+torch_arr = torch.from_numpy(np_arr.copy())
+\end{lstlisting}
+\end{warning}
+
+\subsection{Counterintuitive Patterns and Gotchas}
+
+\subsubsection{Broadcasting Surprises}
+
+\begin{lstlisting}
+# Intending to normalize each sample
+X = torch.randn(100, 10)  # 100 samples, 10 features
+mean = X.mean(dim=0)       # Shape: (10,) - mean per feature
+X_norm = X - mean          # Broadcasts correctly
+
+# But what if you transpose?
+X_T = X.t()                # Shape: (10, 100)
+X_T_norm = X_T - mean      # Broadcasts, but probably not what you want!
+# mean (10,) broadcasts to (10, 100) by copying across dim 1
+\end{lstlisting}
+
+\textbf{Solution:} Always use \code{keepdim=True} when reducing to preserve dimensionality:
+\begin{lstlisting}
+mean = X.mean(dim=0, keepdim=True)  # Shape: (1, 10)
+X_norm = X - mean                    # Unambiguous broadcasting
+\end{lstlisting}
+
+\subsubsection{The View Trap}
+
+\begin{lstlisting}
+x = torch.randn(2, 3)
+y = x.t()  # Transpose - now non-contiguous
+
+# This fails!
+try:
+    z = y.view(6)
+except RuntimeError as e:
+    print(f"Error: {e}")  # view size not compatible
+
+# Must make contiguous first
+z = y.contiguous().view(6)  # Works
+# or use reshape (does this automatically)
+z = y.reshape(6)  # Works
+\end{lstlisting}
+
+\begin{experttrick}[When to Use View]
+Despite the gotcha, \code{view()} is preferable to \code{reshape()} when:
+
+\begin{enumerate}
+    \item You \textit{know} the tensor is contiguous
+    \item You want to catch bugs (reshape silently copies)
+    \item Performance is critical (view is guaranteed zero-copy)
+\end{enumerate}
+
+Use \code{reshape()} for robust code that handles any input. Use \code{view()} for performance-critical sections after verifying contiguity.
+\end{experttrick}
+
+\subsubsection{In-Place Operations and Autograd}
+
+\begin{lstlisting}
+# This breaks autograd!
+x = torch.randn(3, 4, requires_grad=True)
+x.add_(1)  # In-place modification
+y = x.sum()
+y.backward()  # RuntimeError: one of the variables needed for gradient 
+              # computation has been modified by an inplace operation
+\end{lstlisting}
+
+\textbf{Rule:} Never use in-place operations on tensors that require gradients unless you know exactly what you're doing.
+
+\section{Best Practices for Scientific ML}
+
+\subsection{Choosing Data Types}
+
+\begin{table}[h]
+\centering
+\caption{Dtype Selection Guide}
+\begin{tabular}{@{}p{0.3\textwidth}p{0.25\textwidth}p{0.35\textwidth}@{}}
+\toprule
+\textbf{Use Case} & \textbf{Recommended dtype} & \textbf{Reason} \\ \midrule
+Standard deep learning & \code{float32} & Balance of precision and speed \\
+PINNs, high-order derivatives & \code{float64} & Numerical stability \\
+Large models (inference) & \code{float16}/\code{bfloat16} & Memory and speed \\
+Integer indices, labels & \code{int64} & Standard convention \\
+Masks, boolean logic & \code{bool} & Clarity and memory efficiency \\ \bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Memory Management Strategy}
+
+\begin{enumerate}
+    \item \textbf{Profile first:} Use \code{torch.cuda.memory\_summary()} to identify bottlenecks
+    \item \textbf{Delete intermediate tensors:} Use \code{del} and \code{torch.cuda.empty\_cache()}
+    \item \textbf{Gradient accumulation:} For large batch sizes, accumulate over multiple forward passes
+    \item \textbf{Mixed precision:} Use automatic mixed precision (AMP) for 2× memory savings
+    \item \textbf{Data loading:} Use \code{pin\_memory=True} and \code{num\_workers > 0}
+\end{enumerate}
+
+\subsection{Numerical Stability Considerations}
+
+\begin{profnote}[Avoiding Numerical Instability]
+Common issues in scientific ML:
+
+\textbf{1. Underflow in exponentials:}
+\begin{lstlisting}
+# Bad: can underflow for large negative x
+def softmax_naive(x):
+    exp_x = torch.exp(x)
+    return exp_x / exp_x.sum(dim=-1, keepdim=True)
+
+# Good: numerically stable
+def softmax_stable(x):
+    x_max = x.max(dim=-1, keepdim=True)[0]
+    exp_x = torch.exp(x - x_max)  # Subtract max for stability
+    return exp_x / exp_x.sum(dim=-1, keepdim=True)
+\end{lstlisting}
+
+\textbf{2. Log of small numbers:}
+\begin{lstlisting}
+# Bad: log(0) = -inf
+loss = -torch.log(probabilities)
+
+# Good: add small epsilon
+loss = -torch.log(probabilities + 1e-8)
+
+# Best: use built-in stable versions
+loss = F.nll_loss(log_probabilities, targets)
+\end{lstlisting}
+
+\textbf{3. Gradient clipping for exploding gradients:}
+\begin{lstlisting}
+# Clip gradients to prevent explosion
+torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+\end{lstlisting}
+\end{profnote}
+
+\section{Practical Exercises}
+
+\subsection{Elementary Exercises}
+
+\begin{exercise}[1.1: Tensor Creation and Inspection \difficulty{1}]
+\textbf{Objective:} Master basic tensor creation and property inspection.
+
+\textbf{Tasks:}
+\begin{enumerate}
+    \item Create a tensor of shape $(4, 5, 6)$ filled with random values from $\mathcal{N}(0, 1)$.
+    \item Inspect and print: shape, dtype, device, number of elements, whether it requires gradients.
+    \item Convert it to \code{float64}, then to \code{int32}, observing what happens to values.
+    \item If you have a GPU, move the tensor to GPU and back to CPU.
+    \item Verify the tensor is contiguous. Transpose it and check again.
+\end{enumerate}
+
+\textbf{Expected output:} Understanding of tensor properties and how operations affect them.
+\end{exercise}
+
+\begin{exercise}[1.2: Broadcasting Mastery \difficulty{2}]
+\textbf{Objective:} Understand and predict broadcasting behavior.
+
+\textbf{Tasks:}
+Given the following tensors:
+\begin{lstlisting}
+A = torch.randn(3, 1, 5)
+B = torch.randn(1, 4, 5)
+C = torch.randn(5)
+D = torch.randn(3, 4)
+\end{lstlisting}
+
+\begin{enumerate}
+    \item Without running code, predict the output shape of: \code{A + B}, \code{A + C}, \code{B + C}
+    \item Verify your predictions by running the code.
+    \item Try \code{A + D}. Will it work? Why or why not?
+    \item Create a tensor \code{E} such that \code{D + E} broadcasts to shape $(3, 4, 5)$.
+\end{enumerate}
+
+\textbf{Learning goal:} Internalize broadcasting rules to avoid silent bugs.
+\end{exercise}
+
+\begin{exercise}[1.3: Indexing and Slicing Operations \difficulty{2}]
+\textbf{Objective:} Master advanced indexing techniques.
+
+\textbf{Tasks:}
+Create a tensor \code{X} of shape $(10, 8, 6)$ with random values.
+
+\begin{enumerate}
+    \item Extract the first 5 elements along dimension 0.
+    \item Extract every other element along dimension 1 for all of dimension 0.
+    \item Use boolean masking to extract all elements greater than 0.5.
+    \item Use \code{torch.where()} to create a tensor where elements $> 0$ are replaced with 1 and elements $\leq 0$ with $-1$.
+    \item Use advanced indexing to extract elements at indices $[0, 3, 7]$ along dimension 0 and indices $[1, 4]$ along dimension 1.
+\end{enumerate}
+
+\textbf{Expected skills:} Comfort with PyTorch's rich indexing API.
+\end{exercise}
+
+\subsection{Intermediate Exercises}
+
+\begin{exercise}[1.4: Implementing Batch Matrix Operations \difficulty{3}]
+\textbf{Objective:} Work with batched operations common in deep learning.
+
+\textbf{Tasks:}
+\begin{enumerate}
+    \item Create a batch of 32 matrices, each of size $(10, 10)$, with random values.
+    \item Implement batched matrix multiplication: multiply each matrix by its transpose.
+    \item Compute the determinant of each matrix in the batch (use \code{torch.linalg.det}).
+    \item For each matrix, compute eigenvalues and eigenvectors (use \code{torch.linalg.eig}).
+    \item Identify matrices that are ill-conditioned (condition number $> 100$). Hint: Use \code{torch.linalg.cond}.
+\end{enumerate}
+
+\textbf{Learning goal:} Understanding batched linear algebra operations crucial for scientific ML.
+\end{exercise}
+
+\begin{exercise}[1.5: Memory-Efficient Operations \difficulty{3}]
+\textbf{Objective:} Learn to work with large tensors without running out of memory.
+
+\textbf{Context:} You need to compute pairwise distances between 10,000 points in 128-dimensional space. The naive approach would create a $(10000, 10000)$ matrix, requiring $\sim$400MB.
+
+\textbf{Tasks:}
+\begin{enumerate}
+    \item Implement the naive version:
+    \begin{lstlisting}
+def pairwise_distances_naive(X):
+    # X: (N, D)
+    # Return: (N, N) matrix of Euclidean distances
+    pass
+    \end{lstlisting}
+    
+    \item Implement a memory-efficient version that processes in chunks:
+    \begin{lstlisting}
+def pairwise_distances_chunked(X, chunk_size=1000):
+    # Process chunk_size rows at a time
+    # Return: same (N, N) matrix
+    pass
+    \end{lstlisting}
+    
+    \item Compare memory usage using \code{torch.cuda.memory\_allocated()} (if GPU available).
+    \item Benchmark speed: which is faster and why?
+    \item \textbf{Bonus:} Implement using \code{torch.cdist} and compare.
+\end{enumerate}
+
+\textbf{Learning goal:} Strategies for working with large-scale data.
+\end{exercise}
+
+\begin{exercise}[1.6: Custom Reduction Operations \difficulty{3}]
+\textbf{Objective:} Implement custom reductions for scientific computing.
+
+\textbf{Tasks:}
+Implement the following custom reduction operations from scratch (without using built-in PyTorch functions for the core computation):
+
+\begin{enumerate}
+    \item \textbf{Geometric mean:} $\left(\prod_{i=1}^n x_i\right)^{1/n}$
+    \begin{itemize}
+        \item Hint: Use log-sum-exp trick for numerical stability
+    \end{itemize}
+    
+    \item \textbf{Harmonic mean:} $\frac{n}{\sum_{i=1}^n \frac{1}{x_i}}$
+    
+    \item \textbf{Trimmed mean:} Mean after removing top and bottom 10\% of values
+    \begin{itemize}
+        \item Use \code{torch.kthvalue} or \code{torch.quantile}
+    \end{itemize}
+    
+    \item \textbf{Weighted standard deviation:} Given weights $w_i$, compute $\sqrt{\frac{\sum w_i (x_i - \bar{x})^2}{\sum w_i}}$
+\end{enumerate}
+
+Each function should:
+\begin{itemize}
+    \item Accept a \code{dim} argument for reduction axis
+    \item Accept a \code{keepdim} argument
+    \item Handle numerical edge cases gracefully
+    \item Work on GPU tensors
+\end{itemize}
+
+\textbf{Learning goal:} Deep understanding of reduction operations and numerical stability.
+\end{exercise}
+
+\subsection{Advanced Exercises}
+
+\begin{exercise}[1.7: Implementing Einstein Summation \difficulty{4}]
+\textbf{Objective:} Master \code{torch.einsum}, the Swiss Army knife of tensor operations.
+
+\textbf{Background:} Einstein summation notation is a compact way to express tensor operations. PyTorch's \code{torch.einsum} implements this.
+
+\textbf{Tasks:}
+\begin{enumerate}
+    \item \textbf{Basics:} Express these operations using \code{einsum}:
+    \begin{itemize}
+        \item Dot product: $\vect{a} \cdot \vect{b}$
+        \item Matrix multiplication: $\mat{A}\mat{B}$
+        \item Batch matrix multiplication: $\mat{A}_i\mat{B}_i$ for $i = 1, \ldots, N$
+        \item Trace: $\text{Tr}(\mat{A}) = \sum_i A_{ii}$
+        \item Transpose: $\mat{A}\transpose$
+    \end{itemize}
+    
+    \item \textbf{Scientific computing:} Implement these using \code{einsum}:
+    \begin{itemize}
+        \item Bilinear form: $\vect{x}\transpose \mat{A} \vect{y}$
+        \item Tensor contraction: Sum over indices $(i, j)$ of $T_{ijk} \cdot S_{ijl}$
+        \item Outer product of three vectors: $T_{ijk} = a_i b_j c_k$
+    \end{itemize}
+    
+    \item \textbf{Deep learning:} Implement attention mechanism using einsum:
+    \begin{lstlisting}
+# Q, K, V: (batch, heads, seq_len, d_k)
+# Output: (batch, heads, seq_len, d_k)
+# Attention(Q, K, V) = softmax(QK^T / sqrt(d_k)) V
+    \end{lstlisting}
+    
+    \item \textbf{Performance:} Compare einsum vs explicit operations for batched matrix multiplication. Which is faster?
+\end{enumerate}
+
+\textbf{Learning goal:} Fluency with einsum for concise, efficient tensor operations.
+\end{exercise}
+
+\begin{exercise}[1.8: Building a Sparse Tensor System \difficulty{5}]
+\textbf{Objective:} Work with sparse tensors for large-scale scientific computing.
+
+\textbf{Context:} Many scientific problems involve sparse matrices (e.g., finite element methods, graph neural networks). PyTorch supports sparse tensors.
+
+\textbf{Tasks:}
+\begin{enumerate}
+    \item Create a sparse matrix representation of the 2D Laplacian operator on a $100 \times 100$ grid:
+    \[
+    \laplacian u_{i,j} = u_{i+1,j} + u_{i-1,j} + u_{i,j+1} + u_{i,j-1} - 4u_{i,j}
+    \]
+    
+    \item Implement sparse matrix-vector multiplication using \code{torch.sparse}.
+    
+    \item Solve the Poisson equation $\laplacian u = f$ using conjugate gradient method with your sparse Laplacian.
+    
+    \item \textbf{Performance analysis:}
+    \begin{itemize}
+        \item Compare memory usage: sparse vs dense representation
+        \item Compare computation time: sparse vs dense matrix-vector product
+        \item At what sparsity level does sparse representation become advantageous?
+    \end{itemize}
+    
+    \item \textbf{Advanced:} Implement Incomplete Cholesky preconditioning for faster convergence.
+\end{enumerate}
+
+\textbf{Learning goal:} Working with sparse tensors for large-scale scientific problems.
+\end{exercise}
+
+\subsection{Hints}
+
+\subsubsection{Hints for Exercise 1.4}
+\begin{itemize}
+    \item For batched operations, the batch dimension is typically dimension 0
+    \item \code{torch.bmm} performs batched matrix multiplication
+    \item For transpose in batched setting: \code{X.transpose(-2, -1)}
+    \item Condition number: ratio of largest to smallest singular value
+\end{itemize}
+
+\subsubsection{Hints for Exercise 1.5}
+\begin{itemize}
+    \item Euclidean distance: $\norm{\vect{x} - \vect{y}}_2 = \sqrt{\sum_i (x_i - y_i)^2}$
+    \item Vectorized form: $\norm{\vect{x} - \vect{y}}_2^2 = \norm{\vect{x}}_2^2 + \norm{\vect{y}}_2^2 - 2\vect{x}\cdot\vect{y}$
+    \item Process in chunks: iterate over rows, compute distances to all other points for each chunk
+    \item Use \code{torch.no\_grad()} context to avoid building computational graph
+\end{itemize}
+
+\subsubsection{Hints for Exercise 1.7}
+\begin{itemize}
+    \item Einsum syntax: \code{torch.einsum('ij,jk->ik', A, B)} for matrix multiplication
+    \item Repeated indices are summed over (Einstein convention)
+    \item For attention, you'll need: \code{'bhqd,bhkd->bhqk'} for $\mat{Q}\mat{K}\transpose$
+    \item Use \code{timeit} module for accurate benchmarking
+\end{itemize}
+
+\subsubsection{Hints for Exercise 1.8}
+\begin{itemize}
+    \item Sparse tensor format: \code{torch.sparse\_coo\_tensor(indices, values, size)}
+    \item For 2D Laplacian, each row has at most 5 non-zero entries
+    \item Conjugate gradient: iterative method, needs only matrix-vector products
+    \item Preconditioning: $M\inv \mat{A} \vect{x} = M\inv \vect{b}$ where $M \approx \mat{A}$ is easier to invert
+\end{itemize}
+
+\section{Summary and Looking Forward}
+
+In this chapter, we built a comprehensive understanding of PyTorch tensors from first principles. We covered:
+
+\begin{itemize}
+    \item \textbf{Mathematical foundations:} Tensors as multi-dimensional arrays, broadcasting rules, memory layout
+    \item \textbf{PyTorch API:} Creation, manipulation, indexing, and shape operations
+    \item \textbf{Device management:} CPU vs GPU, memory optimization strategies
+    \item \textbf{Numerical considerations:} Dtype selection, stability tricks, performance optimization
+    \item \textbf{Best practices:} Idioms, common pitfalls, debugging strategies
+\end{itemize}
+
+\textbf{Key takeaways:}
+\begin{enumerate}
+    \item Tensors are the fundamental data structure—master them, and everything else follows
+    \item Broadcasting is powerful but dangerous—always verify shapes explicitly
+    \item Memory management matters—profile before optimizing
+    \item Numerical stability is critical in scientific computing—use stable implementations
+    \item Modern PyTorch encourages functional style—avoid in-place ops on gradient tensors
+\end{enumerate}
+
+\begin{profnote}[Before Moving Forward]
+If you feel overwhelmed, that's normal. Tensor operations are the vocabulary of deep learning. Just as you can't write poetry without knowing words, you can't build neural networks without fluency in tensors.
+
+\textbf{Recommended practice:}
+\begin{itemize}
+    \item Spend a week working exclusively with tensors—no neural networks yet
+    \item Implement familiar algorithms (matrix factorization, PCA, k-means) using only PyTorch tensors
+    \item Debug every dimension mismatch error until you can predict shapes in your sleep
+    \item Read PyTorch source code: \url{https://github.com/pytorch/pytorch}
+\end{itemize}
+
+The investment pays dividends. When you encounter bugs in Chapter 10 (Transformers) involving attention masks with shape $(B, 1, S, S)$ broadcasting with logits of shape $(B, H, S, S)$, you'll debug it in seconds instead of hours.
+\end{profnote}
+
+In the next chapter, we tackle the second pillar of PyTorch: \textbf{automatic differentiation}. We will see how PyTorch builds computational graphs, computes gradients efficiently, and enables the gradient-based optimization that powers all modern deep learning.
+
+\textit{Onward!}
