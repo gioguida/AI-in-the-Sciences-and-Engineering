@@ -1,0 +1,730 @@
+% =============================================
+% SECTION 5: DATA LOADING & PREPROCESSING
+% =============================================
+
+\section{Data Loading \& Preprocessing}
+
+\subsection{Introduction: Why Proper Data Loading Matters}
+
+So far, we've used simple tensors for data. In practice, you'll have:
+\begin{itemize}
+    \item Large datasets that don't fit in memory
+    \item Complex preprocessing pipelines
+    \item Data on disk (files, databases)
+    \item Need for efficient batching and shuffling
+    \item Different data types (images, time series, point clouds, meshes)
+\end{itemize}
+
+PyTorch provides \texttt{Dataset} and \texttt{DataLoader} to handle this elegantly:
+\begin{itemize}
+    \item \textbf{Dataset:} Defines how to access individual samples
+    \item \textbf{DataLoader:} Handles batching, shuffling, parallel loading
+\end{itemize}
+
+\subsection{Theory: Dataset and DataLoader Architecture}
+
+\begin{theorybox}[The Data Pipeline]
+\begin{verbatim}
+Raw Data → Dataset → DataLoader → Model
+           (access)  (batch, shuffle, parallel)
+\end{verbatim}
+
+\textbf{Dataset} answers: "How do I get sample $i$?"
+
+\textbf{DataLoader} answers: "How do I create batches efficiently?"
+\end{theorybox}
+
+\textbf{Dataset Requirements:}
+
+A valid dataset must implement:
+\begin{enumerate}
+    \item \texttt{\_\_len\_\_()}: Return total number of samples
+    \item \texttt{\_\_getitem\_\_(idx)}: Return sample at index \texttt{idx}
+\end{enumerate}
+
+\textbf{DataLoader Benefits:}
+\begin{itemize}
+    \item Automatic batching
+    \item Shuffling for training
+    \item Parallel data loading (multiple workers)
+    \item Automatic memory pinning for GPU transfer
+    \item Handling variable-length sequences
+\end{itemize}
+
+\subsection{Implementation: Basic Usage}
+
+\subsubsection{Using Built-in Datasets}
+
+PyTorch provides common datasets in \texttt{torchvision.datasets}:
+
+\begin{lstlisting}
+import torch
+from torch.utils.data import DataLoader
+import torchvision
+import torchvision.transforms as transforms
+
+# Load MNIST dataset
+transform = transforms.ToTensor()  # Convert PIL Image to tensor
+
+train_dataset = torchvision.datasets.MNIST(
+    root='./data',
+    train=True,
+    download=True,
+    transform=transform
+)
+
+test_dataset = torchvision.datasets.MNIST(
+    root='./data',
+    train=False,
+    download=True,
+    transform=transform
+)
+
+# Create DataLoaders
+train_loader = DataLoader(
+    train_dataset,
+    batch_size=64,
+    shuffle=True,      # Shuffle training data
+    num_workers=2,     # Parallel loading
+    pin_memory=True    # Faster GPU transfer
+)
+
+test_loader = DataLoader(
+    test_dataset,
+    batch_size=64,
+    shuffle=False,     # Don't shuffle test data
+    num_workers=2
+)
+
+# Iterate through batches
+for batch_idx, (images, labels) in enumerate(train_loader):
+    # images: (64, 1, 28, 28) - batch of 64 grayscale 28x28 images
+    # labels: (64,) - batch of 64 labels
+    print(f"Batch {batch_idx}: {images.shape}, {labels.shape}")
+    break
+\end{lstlisting}
+
+\begin{pytorchtip}[DataLoader Parameters]
+Key parameters:
+\begin{itemize}
+    \item \textbf{batch\_size:} Number of samples per batch (32-256 typically)
+    \item \textbf{shuffle:} Randomize order (True for training, False for evaluation)
+    \item \textbf{num\_workers:} Parallel processes for loading (0=main process, 2-4 for speed)
+    \item \textbf{pin\_memory:} Faster CPU→GPU transfer (True if using GPU)
+    \item \textbf{drop\_last:} Drop incomplete last batch (useful for batch norm)
+\end{itemize}
+\end{pytorchtip}
+
+\clearpage
+\subsubsection{Creating Custom Datasets}
+
+For your own data, create a custom \texttt{Dataset}:
+
+\begin{lstlisting}
+from torch.utils.data import Dataset
+
+class SimpleDataset(Dataset):
+    """Example: Dataset from numpy arrays."""
+    
+    def __init__(self, X, y):
+        """
+        Args:
+            X: numpy array or tensor of features
+            y: numpy array or tensor of labels
+        """
+        self.X = torch.FloatTensor(X) if not isinstance(X, torch.Tensor) else X
+        self.y = torch.FloatTensor(y) if not isinstance(y, torch.Tensor) else y
+    
+    def __len__(self):
+        """Return total number of samples."""
+        return len(self.X)
+    
+    def __getitem__(self, idx):
+        """Return sample at index idx."""
+        return self.X[idx], self.y[idx]
+
+# Usage
+import numpy as np
+
+X = np.random.randn(1000, 10)
+y = np.random.randn(1000, 1)
+
+dataset = SimpleDataset(X, y)
+loader = DataLoader(dataset, batch_size=32, shuffle=True)
+
+for batch_X, batch_y in loader:
+    print(batch_X.shape, batch_y.shape)
+    break
+\end{lstlisting}
+
+\subsubsection{Dataset from Files}
+
+More realistic: loading data from disk:
+
+\begin{lstlisting}
+import os
+import pandas as pd
+from PIL import Image
+
+class ImageDataset(Dataset):
+    """Load images from a directory with CSV labels."""
+    
+    def __init__(self, csv_file, img_dir, transform=None):
+        """
+        Args:
+            csv_file: Path to CSV with columns [filename, label]
+            img_dir: Directory with images
+            transform: Optional transform to apply
+        """
+        self.data = pd.read_csv(csv_file)
+        self.img_dir = img_dir
+        self.transform = transform
+    
+    def __len__(self):
+        return len(self.data)
+    
+    def __getitem__(self, idx):
+        # Get image filename and label
+        img_name = self.data.iloc[idx, 0]
+        label = self.data.iloc[idx, 1]
+        
+        # Load image
+        img_path = os.path.join(self.img_dir, img_name)
+        image = Image.open(img_path).convert('RGB')
+        
+        # Apply transforms
+        if self.transform:
+            image = self.transform(image)
+        
+        return image, label
+
+# Usage with transforms
+transform = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                        std=[0.229, 0.224, 0.225])
+])
+
+dataset = ImageDataset('labels.csv', 'images/', transform=transform)
+loader = DataLoader(dataset, batch_size=32, shuffle=True)
+\end{lstlisting}
+
+\subsubsection{Dataset for Time Series}
+
+For scientific computing, time series are common:
+
+\begin{lstlisting}
+class TimeSeriesDataset(Dataset):
+    """
+    Create windows from a long time series.
+    Useful for forecasting, where we predict future from past.
+    """
+    
+    def __init__(self, data, window_size, forecast_horizon):
+        """
+        Args:
+            data: 1D array of time series values
+            window_size: Length of input sequence
+            forecast_horizon: How many steps ahead to predict
+        """
+        self.data = torch.FloatTensor(data)
+        self.window_size = window_size
+        self.forecast_horizon = forecast_horizon
+    
+    def __len__(self):
+        # Number of valid windows
+        return len(self.data) - self.window_size - self.forecast_horizon + 1
+    
+    def __getitem__(self, idx):
+        # Input: window_size points starting at idx
+        x = self.data[idx : idx + self.window_size]
+        
+        # Target: forecast_horizon points after the input
+        y = self.data[idx + self.window_size : 
+                     idx + self.window_size + self.forecast_horizon]
+        
+        return x, y
+
+# Example: predict next 10 steps from past 50
+data = np.sin(np.linspace(0, 100, 1000))
+dataset = TimeSeriesDataset(data, window_size=50, forecast_horizon=10)
+
+print(f"Dataset size: {len(dataset)}")
+x, y = dataset[0]
+print(f"Input shape: {x.shape}, Target shape: {y.shape}")
+# Input shape: torch.Size([50]), Target shape: torch.Size([10])
+
+loader = DataLoader(dataset, batch_size=32, shuffle=False)
+# Note: Don't shuffle time series if order matters!
+\end{lstlisting}
+
+\clearpage
+\subsubsection{Dataset for Point Clouds}
+
+For 3D data (molecular structures, point clouds):
+
+\begin{lstlisting}
+class PointCloudDataset(Dataset):
+    """Dataset for 3D point clouds."""
+    
+    def __init__(self, data_dir, num_points=1024):
+        """
+        Args:
+            data_dir: Directory with .npy files, each containing Nx3 points
+            num_points: Sample this many points from each cloud
+        """
+        self.files = [os.path.join(data_dir, f) 
+                     for f in os.listdir(data_dir) if f.endswith('.npy')]
+        self.num_points = num_points
+    
+    def __len__(self):
+        return len(self.files)
+    
+    def __getitem__(self, idx):
+        # Load point cloud (N x 3)
+        points = np.load(self.files[idx])
+        
+        # Sample fixed number of points
+        if len(points) > self.num_points:
+            # Random sampling
+            indices = np.random.choice(len(points), self.num_points, 
+                                      replace=False)
+            points = points[indices]
+        elif len(points) < self.num_points:
+            # Pad with zeros
+            padding = np.zeros((self.num_points - len(points), 3))
+            points = np.vstack([points, padding])
+        
+        return torch.FloatTensor(points)
+
+# Usage
+# dataset = PointCloudDataset('point_clouds/')
+# loader = DataLoader(dataset, batch_size=8, shuffle=True)
+# for batch in loader:
+#     print(batch.shape)  # (8, 1024, 3)
+\end{lstlisting}
+
+\subsubsection{Data Transforms}
+
+Transforms process data on-the-fly:
+
+\begin{lstlisting}
+from torchvision import transforms
+
+# Common image transforms
+transform = transforms.Compose([
+    # Resize to fixed size
+    transforms.Resize((224, 224)),
+    
+    # Data augmentation (for training)
+    transforms.RandomHorizontalFlip(p=0.5),
+    transforms.RandomRotation(degrees=15),
+    transforms.ColorJitter(brightness=0.2, contrast=0.2),
+    
+    # Convert to tensor
+    transforms.ToTensor(),  # Converts to [0, 1] and (C, H, W)
+    
+    # Normalize (important!)
+    transforms.Normalize(mean=[0.485, 0.456, 0.406],  # ImageNet stats
+                        std=[0.229, 0.224, 0.225])
+])
+
+# For evaluation/test: no data augmentation
+test_transform = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                        std=[0.229, 0.224, 0.225])
+])
+
+# Custom transform as a callable
+class AddGaussianNoise:
+    """Add Gaussian noise to tensor."""
+    def __init__(self, mean=0., std=0.1):
+        self.mean = mean
+        self.std = std
+    
+    def __call__(self, tensor):
+        return tensor + torch.randn(tensor.size()) * self.std + self.mean
+
+# Use in Compose
+transform = transforms.Compose([
+    transforms.ToTensor(),
+    AddGaussianNoise(std=0.05)
+])
+\end{lstlisting}
+
+\begin{pytorchtip}[When to Apply Transforms]
+Transforms can be applied in two places:
+
+\textbf{In Dataset (\_\_getitem\_\_):}
+\begin{itemize}
+    \item Pro: Each sample transformed on-the-fly
+    \item Pro: Can use data augmentation
+    \item Con: Adds computation during training
+\end{itemize}
+
+\textbf{Pre-computed and saved:}
+\begin{itemize}
+    \item Pro: Faster training (no transform overhead)
+    \item Con: More disk space
+    \item Con: Can't use random augmentation
+\end{itemize}
+
+For training with augmentation: use Dataset transforms.
+For inference: consider pre-computing.
+\end{pytorchtip}
+
+\clearpage
+\subsubsection{Normalization Strategies}
+
+Normalization is crucial for training stability:
+
+\begin{lstlisting}
+# Method 1: Standardization (zero mean, unit variance)
+def compute_mean_std(dataset):
+    """Compute mean and std for normalization."""
+    loader = DataLoader(dataset, batch_size=64, shuffle=False)
+    
+    mean = 0.0
+    std = 0.0
+    total_samples = 0
+    
+    for data, _ in loader:
+        batch_samples = data.size(0)
+        data = data.view(batch_samples, data.size(1), -1)
+        mean += data.mean(2).sum(0)
+        std += data.std(2).sum(0)
+        total_samples += batch_samples
+    
+    mean /= total_samples
+    std /= total_samples
+    
+    return mean, std
+
+# Usage
+# mean, std = compute_mean_std(train_dataset)
+# transform = transforms.Normalize(mean=mean, std=std)
+
+# Method 2: Min-Max scaling to [0, 1] or [-1, 1]
+class MinMaxScaler:
+    def __init__(self, data):
+        self.min = data.min()
+        self.max = data.max()
+    
+    def transform(self, data):
+        return (data - self.min) / (self.max - self.min)
+    
+    def inverse_transform(self, data):
+        return data * (self.max - self.min) + self.min
+
+# Method 3: Per-feature normalization (for tabular data)
+class StandardScaler:
+    def __init__(self, data):
+        """
+        data: (N, D) tensor
+        """
+        self.mean = data.mean(dim=0)
+        self.std = data.std(dim=0)
+    
+    def transform(self, data):
+        return (data - self.mean) / (self.std + 1e-8)
+    
+    def inverse_transform(self, data):
+        return data * self.std + self.mean
+
+# Usage
+X_train = torch.randn(1000, 10)
+scaler = StandardScaler(X_train)
+X_train_normalized = scaler.transform(X_train)
+X_test_normalized = scaler.transform(X_test)  # Use training statistics!
+\end{lstlisting}
+
+\begin{warningbox}[Always Use Training Statistics]
+When normalizing:
+\begin{enumerate}
+    \item Compute mean/std from \textbf{training data only}
+    \item Apply the same transformation to validation and test data
+    \item \textbf{Never} compute statistics from test data!
+\end{enumerate}
+
+Why? Using test statistics is a form of data leakage and gives overly optimistic results.
+\end{warningbox}
+
+\subsubsection{Handling Variable-Length Sequences}
+
+For sequences of different lengths (text, time series with variable duration):
+
+\begin{lstlisting}
+from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence
+
+def collate_fn(batch):
+    """
+    Custom collate function for variable-length sequences.
+    
+    batch: List of (sequence, label) tuples
+    sequences: List of tensors with different lengths
+    """
+    sequences, labels = zip(*batch)
+    
+    # Get lengths
+    lengths = torch.LongTensor([len(seq) for seq in sequences])
+    
+    # Pad sequences to same length
+    sequences_padded = pad_sequence(sequences, batch_first=True, 
+                                    padding_value=0)
+    
+    labels = torch.LongTensor(labels)
+    
+    return sequences_padded, labels, lengths
+
+# Example dataset with variable lengths
+class VariableLengthDataset(Dataset):
+    def __init__(self, num_samples=100):
+        self.data = []
+        for _ in range(num_samples):
+            # Random length between 10 and 50
+            length = torch.randint(10, 50, (1,)).item()
+            seq = torch.randn(length, 5)  # 5 features
+            label = torch.randint(0, 2, (1,)).item()
+            self.data.append((seq, label))
+    
+    def __len__(self):
+        return len(self.data)
+    
+    def __getitem__(self, idx):
+        return self.data[idx]
+
+# Use with custom collate_fn
+dataset = VariableLengthDataset()
+loader = DataLoader(dataset, batch_size=8, collate_fn=collate_fn)
+
+for sequences, labels, lengths in loader:
+    print(f"Padded sequences: {sequences.shape}")  # (8, max_len, 5)
+    print(f"Lengths: {lengths}")  # (8,)
+    break
+\end{lstlisting}
+
+\clearpage
+\subsubsection{Train/Validation/Test Split}
+
+Proper data splitting:
+
+\begin{lstlisting}
+from torch.utils.data import random_split
+
+# Method 1: random_split
+dataset = SimpleDataset(X, y)
+train_size = int(0.7 * len(dataset))
+val_size = int(0.15 * len(dataset))
+test_size = len(dataset) - train_size - val_size
+
+train_dataset, val_dataset, test_dataset = random_split(
+    dataset, [train_size, val_size, test_size]
+)
+
+# Method 2: Using indices (more control)
+from torch.utils.data import Subset
+import numpy as np
+
+indices = np.arange(len(dataset))
+np.random.shuffle(indices)
+
+train_idx = indices[:train_size]
+val_idx = indices[train_size:train_size+val_size]
+test_idx = indices[train_size+val_size:]
+
+train_dataset = Subset(dataset, train_idx)
+val_dataset = Subset(dataset, val_idx)
+test_dataset = Subset(dataset, test_idx)
+
+# Method 3: sklearn for stratified split (classification)
+from sklearn.model_selection import train_test_split
+
+X = np.random.randn(1000, 10)
+y = np.random.randint(0, 3, 1000)  # 3 classes
+
+X_train, X_temp, y_train, y_temp = train_test_split(
+    X, y, test_size=0.3, stratify=y, random_state=42
+)
+X_val, X_test, y_val, y_test = train_test_split(
+    X_temp, y_temp, test_size=0.5, stratify=y_temp, random_state=42
+)
+
+train_dataset = SimpleDataset(X_train, y_train)
+val_dataset = SimpleDataset(X_val, y_val)
+test_dataset = SimpleDataset(X_test, y_test)
+\end{lstlisting}
+
+\subsubsection{Efficient Data Loading}
+
+For large datasets that don't fit in RAM:
+
+\begin{lstlisting}
+class LazyLoadDataset(Dataset):
+    """Load data on-demand, don't store in memory."""
+    
+    def __init__(self, file_list):
+        """
+        file_list: List of file paths
+        """
+        self.file_list = file_list
+    
+    def __len__(self):
+        return len(self.file_list)
+    
+    def __getitem__(self, idx):
+        # Load from disk only when needed
+        data = np.load(self.file_list[idx])
+        return torch.FloatTensor(data)
+
+# For even larger datasets: memory-mapped arrays
+class MemMapDataset(Dataset):
+    """Use memory-mapped arrays for huge datasets."""
+    
+    def __init__(self, memmap_file, shape, dtype):
+        """
+        memmap_file: Path to .npy file
+        shape: Shape of the data array
+        dtype: Data type
+        """
+        self.data = np.memmap(memmap_file, dtype=dtype, 
+                             mode='r', shape=shape)
+    
+    def __len__(self):
+        return self.data.shape[0]
+    
+    def __getitem__(self, idx):
+        # Read only the needed slice from disk
+        return torch.FloatTensor(self.data[idx])
+\end{lstlisting}
+
+\begin{pytorchtip}[Optimizing DataLoader Performance]
+If data loading is slow:
+
+\begin{enumerate}
+    \item \textbf{Increase num\_workers:} 2-4 usually optimal
+    \item \textbf{Use pin\_memory=True:} If using GPU
+    \item \textbf{Prefetch:} DataLoader automatically prefetches next batch
+    \item \textbf{Reduce transforms:} Pre-compute expensive transforms
+    \item \textbf{Use SSD:} Faster disk I/O
+    \item \textbf{Check CPU bottleneck:} If GPU is idle, data loading is the issue
+\end{enumerate}
+
+Warning: Too many workers can hurt performance (overhead).
+\end{pytorchtip}
+
+\clearpage
+\subsection{Exercises}
+
+\begin{exercise}[5.1: Simple Dataset - $\bigstar\bigstar$]
+\textbf{Goal:} Create your first custom dataset.
+
+\begin{enumerate}
+    \item Create a synthetic dataset: $y = 2x_1 + 3x_2 + \epsilon$
+    \item Generate 1000 samples with $x_1, x_2 \sim \mathcal{N}(0, 1)$ and noise $\epsilon \sim \mathcal{N}(0, 0.1)$
+    \item Implement a custom \texttt{Dataset} class
+    \item Create a \texttt{DataLoader} with batch\_size=32
+    \item Iterate through one epoch and print batch shapes
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[5.2: Train/Val/Test Split - $\bigstar\bigstar$]
+\textbf{Goal:} Practice proper data splitting.
+
+\begin{enumerate}
+    \item Generate a classification dataset (1000 samples, 3 classes)
+    \item Split into train (70\%), validation (15\%), test (15\%)
+    \item Ensure the split is stratified (balanced classes in each split)
+    \item Create separate DataLoaders for each split
+    \item Verify class distributions are similar
+\end{enumerate}
+
+\textbf{Hint:} Use \texttt{sklearn.model\_selection.train\_test\_split} with \texttt{stratify}.
+\end{exercise}
+
+\begin{exercise}[5.3: Time Series Dataset - $\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Handle sequential data.
+
+\begin{enumerate}
+    \item Generate a noisy sine wave with 10,000 points
+    \item Create a dataset that returns windows of size 50 to predict the next 10 points
+    \item Implement the \texttt{TimeSeriesDataset} class
+    \item Train a simple MLP to predict future values
+    \item Visualize predictions vs ground truth
+\end{enumerate}
+
+\textbf{Challenge:} Try with a real time series (stock prices, weather data).
+\end{exercise}
+
+\begin{exercise}[5.4: Data Normalization - $\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Understand normalization impact.
+
+\begin{enumerate}
+    \item Create a dataset with features on different scales:
+    \begin{itemize}
+        \item Feature 1: range [0, 1]
+        \item Feature 2: range [0, 1000]
+        \item Feature 3: range [-100, 100]
+    \end{itemize}
+    \item Train a model \textbf{without} normalization
+    \item Train a model \textbf{with} standardization
+    \item Compare:
+    \begin{itemize}
+        \item Training speed (epochs to converge)
+        \item Final loss
+        \item Gradient magnitudes
+    \end{itemize}
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[5.5: Data Augmentation - $\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Implement custom transforms.
+
+\begin{enumerate}
+    \item Create a simple image dataset (or use MNIST)
+    \item Implement custom transforms:
+    \begin{itemize}
+        \item Add Gaussian noise
+        \item Random scaling
+        \item Random shifts
+    \end{itemize}
+    \item Train models with and without augmentation
+    \item Compare validation performance
+    \item Visualize augmented samples
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[5.6: Variable-Length Sequences - $\bigstar\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Handle sequences of different lengths.
+
+\begin{enumerate}
+    \item Create a dataset of sequences with random lengths (10-100)
+    \item Implement a custom \texttt{collate\_fn} to pad sequences
+    \item Create a DataLoader using this collate function
+    \item Train an RNN that handles the padded sequences
+    \item Use \texttt{pack\_padded\_sequence} for efficiency (we'll learn this properly in the RNN section)
+\end{enumerate}
+
+\textbf{Hint:} The collate function should return sequences, lengths, and labels.
+\end{exercise}
+
+\begin{exercise}[5.7: Complete Data Pipeline - $\bigstar\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Build a production-ready data pipeline.
+
+Create a complete pipeline with:
+\begin{enumerate}
+    \item Custom dataset loading from CSV files
+    \item Train/val/test split with stratification
+    \item Different transforms for train (with augmentation) and test
+    \item Normalization using training statistics
+    \item Efficient DataLoaders with multiple workers
+    \item Save and load normalization parameters
+    \item Handle class imbalance with weighted sampling (optional)
+\end{enumerate}
+
+Test on a real dataset (e.g., UCI datasets, Kaggle).
+\end{exercise}
+
+\clearpage

@@ -1,0 +1,1064 @@
+% =============================================
+% PART II: DEEP LEARNING ARCHITECTURES
+% =============================================
+
+\part{Deep Learning Architectures}
+
+% =============================================
+% SECTION 6: FULLY CONNECTED NETWORKS (MLPs)
+% =============================================
+
+\section{Fully Connected Networks (MLPs)}
+
+\subsection{Introduction: The Foundation of Deep Learning}
+
+Multi-Layer Perceptrons (MLPs), also called fully connected networks or feedforward networks, are the simplest and most fundamental deep learning architecture. Every neuron in one layer connects to every neuron in the next layer—hence "fully connected."
+
+Despite their simplicity, MLPs are:
+\begin{itemize}
+    \item \textbf{Universal approximators:} Can approximate any continuous function
+    \item \textbf{Building blocks:} Components of more complex architectures
+    \item \textbf{Highly effective:} For tabular data, function approximation, and many scientific computing tasks
+\end{itemize}
+
+\textbf{When to use MLPs:}
+\begin{itemize}
+    \item Tabular data (features don't have spatial/temporal structure)
+    \item Function approximation in scientific computing
+    \item As components in larger architectures
+    \item When you have relatively small input dimensions (<1000s of features)
+\end{itemize}
+
+\textbf{When NOT to use MLPs:}
+\begin{itemize}
+    \item Images (use CNNs—exploit spatial structure)
+    \item Sequences (use RNNs/Transformers—exploit temporal structure)
+    \item Very high-dimensional inputs (too many parameters)
+\end{itemize}
+
+\subsection{Theory: Understanding MLPs}
+
+\subsubsection{Architecture}
+
+An MLP consists of:
+\begin{itemize}
+    \item \textbf{Input layer:} Receives features $\mathbf{x} \in \mathbb{R}^{d_{in}}$
+    \item \textbf{Hidden layers:} Transform representations
+    \item \textbf{Output layer:} Produces predictions $\hat{\mathbf{y}} \in \mathbb{R}^{d_{out}}$
+\end{itemize}
+
+\textbf{Single hidden layer MLP:}
+\[
+\mathbf{h} = \sigma(\mathbf{W}_1 \mathbf{x} + \mathbf{b}_1)
+\]
+\[
+\hat{\mathbf{y}} = \mathbf{W}_2 \mathbf{h} + \mathbf{b}_2
+\]
+
+where:
+\begin{itemize}
+    \item $\mathbf{W}_1 \in \mathbb{R}^{h \times d_{in}}$: First layer weights
+    \item $\mathbf{b}_1 \in \mathbb{R}^h$: First layer biases
+    \item $\sigma$: Activation function (nonlinearity)
+    \item $\mathbf{h} \in \mathbb{R}^h$: Hidden representation
+    \item $\mathbf{W}_2, \mathbf{b}_2$: Second layer parameters
+\end{itemize}
+
+\begin{theorybox}[Universal Approximation Theorem]
+A single-hidden-layer MLP with enough neurons can approximate any continuous function on a compact domain to arbitrary accuracy.
+
+\textbf{Key insight:} Width matters! But in practice, depth is often more efficient than width.
+
+\textbf{Intuition:} Think of hidden neurons as "basis functions." With enough of them, you can represent complex functions as combinations of simple ones.
+\end{theorybox}
+
+\subsubsection{Depth vs Width}
+
+\textbf{Wide networks} (few layers, many neurons per layer):
+\begin{itemize}
+    \item Pro: Easier to optimize (fewer layers = less gradient propagation)
+    \item Pro: Universal approximation holds
+    \item Con: Need exponentially many neurons for complex functions
+    \item Con: Don't learn hierarchical features
+\end{itemize}
+
+\textbf{Deep networks} (many layers, moderate neurons per layer):
+\begin{itemize}
+    \item Pro: More parameter efficient (exponentially fewer parameters)
+    \item Pro: Learn hierarchical representations (low-level → high-level features)
+    \item Pro: Better generalization (implicit regularization)
+    \item Con: Harder to optimize (vanishing/exploding gradients)
+    \item Con: Requires careful initialization and normalization
+\end{itemize}
+
+\textbf{Rule of thumb:}
+\begin{itemize}
+    \item Start with 2-3 hidden layers
+    \item Width: 1-2× input dimension for first layer, then decrease
+    \item Increase depth if data is complex and you have lots of samples
+    \item Use modern techniques (batch norm, skip connections) for very deep networks
+\end{itemize}
+
+\clearpage
+\subsubsection{Activation Functions}
+
+Activation functions introduce nonlinearity. Without them, multiple layers would collapse to a single linear transformation.
+
+\textbf{ReLU (Rectified Linear Unit):}
+\[
+\text{ReLU}(x) = \max(0, x)
+\]
+
+\begin{itemize}
+    \item \textbf{Pros:} Fast to compute, sparse activations, no vanishing gradient for $x>0$
+    \item \textbf{Cons:} "Dead ReLUs" (neurons that always output 0)
+    \item \textbf{Derivative:} $\frac{d}{dx}\text{ReLU}(x) = \begin{cases} 1 & x > 0 \\ 0 & x \leq 0 \end{cases}$
+    \item \textbf{Use when:} Default choice for most tasks, especially deep networks
+\end{itemize}
+
+\textbf{Leaky ReLU:}
+\[
+\text{LeakyReLU}(x) = \max(\alpha x, x) \quad \text{(typically } \alpha=0.01\text{)}
+\]
+
+\begin{itemize}
+    \item \textbf{Pros:} Fixes dead ReLU problem (always has gradient)
+    \item \textbf{Cons:} Extra hyperparameter $\alpha$
+    \item \textbf{Use when:} ReLU causes many dead neurons
+\end{itemize}
+
+\textbf{ELU (Exponential Linear Unit):}
+\[
+\text{ELU}(x) = \begin{cases} x & x > 0 \\ \alpha(e^x - 1) & x \leq 0 \end{cases}
+\]
+
+\begin{itemize}
+    \item \textbf{Pros:} Smooth, mean activations closer to zero
+    \item \textbf{Cons:} Slower to compute (exponential)
+    \item \textbf{Use when:} You want smoother gradients
+\end{itemize}
+
+\textbf{Tanh (Hyperbolic Tangent):}
+\[
+\text{tanh}(x) = \frac{e^x - e^{-x}}{e^x + e^{-x}}
+\]
+
+\begin{itemize}
+    \item \textbf{Pros:} Zero-centered (outputs in $[-1, 1]$), smooth
+    \item \textbf{Cons:} Vanishing gradient for large $|x|$
+    \item \textbf{Use when:} Need zero-centered activations (RNNs, some scientific applications)
+\end{itemize}
+
+\textbf{Sigmoid:}
+\[
+\sigma(x) = \frac{1}{1 + e^{-x}}
+\]
+
+\begin{itemize}
+    \item \textbf{Pros:} Outputs in $(0, 1)$ (interpretable as probabilities)
+    \item \textbf{Cons:} Strong vanishing gradient, not zero-centered
+    \item \textbf{Use when:} \textbf{Only in output layer} for binary classification
+\end{itemize}
+
+\textbf{GELU (Gaussian Error Linear Unit):}
+\[
+\text{GELU}(x) = x \cdot \Phi(x) \quad \text{where } \Phi \text{ is CDF of } \mathcal{N}(0,1)
+\]
+
+\begin{itemize}
+    \item \textbf{Pros:} Smooth, used in state-of-the-art models (BERT, GPT)
+    \item \textbf{Cons:} More expensive than ReLU
+    \item \textbf{Use when:} Training Transformers or want best performance
+\end{itemize}
+
+\textbf{Swish (SiLU):}
+\[
+\text{Swish}(x) = x \cdot \sigma(x)
+\]
+
+\begin{itemize}
+    \item \textbf{Pros:} Smooth, unbounded above, self-gated
+    \item \textbf{Cons:} More expensive than ReLU
+    \item \textbf{Use when:} Similar to GELU, modern architecture
+\end{itemize}
+
+\begin{pytorchtip}[Choosing Activation Functions]
+\textbf{Default choice:} Use \textbf{ReLU} for hidden layers unless you have a reason not to.
+
+\textbf{Use Leaky ReLU or ELU if:} You observe many dead neurons (check activation distributions)
+
+\textbf{Use Tanh if:} You need zero-centered activations (RNNs, specific scientific applications)
+
+\textbf{Use GELU or Swish if:} You're training a Transformer or want state-of-the-art performance and can afford the compute
+
+\textbf{Never use Sigmoid in hidden layers:} Strong vanishing gradient makes training very difficult
+\end{pytorchtip}
+
+\clearpage
+\subsubsection{Why Networks Fail to Train}
+
+\textbf{1. Vanishing Gradients}
+
+As gradients backpropagate through many layers, they can become exponentially small.
+
+\textbf{Cause:} Chain rule multiplies many small derivatives ($<1$)
+
+\textbf{Effect:} Early layers learn very slowly or not at all
+
+\textbf{Solutions:}
+\begin{itemize}
+    \item Use ReLU instead of sigmoid/tanh (ReLU has gradient 1 for $x>0$)
+    \item Proper initialization (Xavier, He)
+    \item Batch normalization
+    \item Skip connections (ResNets—we'll cover this later)
+\end{itemize}
+
+\textbf{2. Exploding Gradients}
+
+Gradients become exponentially large, causing NaN or very large parameter updates.
+
+\textbf{Cause:} Chain rule multiplies many large derivatives ($>1$)
+
+\textbf{Effect:} Training diverges, loss becomes NaN
+
+\textbf{Solutions:}
+\begin{itemize}
+    \item Gradient clipping
+    \item Proper initialization
+    \item Lower learning rate
+    \item Batch normalization
+\end{itemize}
+
+\textbf{3. Dead ReLUs}
+
+ReLU neurons that always output 0 (because input is always negative).
+
+\textbf{Cause:} Large negative bias or poor initialization
+
+\textbf{Effect:} Neurons become permanently inactive, reducing model capacity
+
+\textbf{Detection:}
+\begin{lstlisting}
+# Check percentage of dead neurons
+activations = model(x)
+dead_percentage = (activations == 0).float().mean()
+print(f"Dead neurons: {dead_percentage*100:.2f}%")
+\end{lstlisting}
+
+\textbf{Solutions:}
+\begin{itemize}
+    \item Use Leaky ReLU or ELU
+    \item Proper initialization (He initialization)
+    \item Lower learning rate
+    \item Batch normalization
+\end{itemize}
+
+\textbf{4. Poor Initialization}
+
+Starting with inappropriate parameter values.
+
+\textbf{Effects:}
+\begin{itemize}
+    \item Too small: Vanishing activations/gradients
+    \item Too large: Exploding activations/gradients
+    \item All same: All neurons learn same features (symmetry problem)
+\end{itemize}
+
+\textbf{Solution:} Use proper initialization schemes (next section).
+
+\subsection{Implementation: Building MLPs in PyTorch}
+
+\subsubsection{Simple MLP with Sequential}
+
+\begin{lstlisting}
+import torch
+import torch.nn as nn
+
+# 3-layer MLP: input_dim -> 128 -> 64 -> output_dim
+model = nn.Sequential(
+    nn.Linear(10, 128),
+    nn.ReLU(),
+    nn.Linear(128, 64),
+    nn.ReLU(),
+    nn.Linear(64, 1)
+)
+
+# Test
+x = torch.randn(32, 10)  # Batch of 32 samples
+y = model(x)
+print(y.shape)  # torch.Size([32, 1])
+\end{lstlisting}
+
+\subsubsection{Custom MLP Module}
+
+\begin{lstlisting}
+class MLP(nn.Module):
+    """Flexible MLP with configurable architecture."""
+    
+    def __init__(self, input_dim, hidden_dims, output_dim, 
+                 activation='relu', dropout=0.0):
+        """
+        Args:
+            input_dim: Input feature dimension
+            hidden_dims: List of hidden layer dimensions
+            output_dim: Output dimension
+            activation: Activation function ('relu', 'tanh', 'gelu', etc.)
+            dropout: Dropout probability (0 = no dropout)
+        """
+        super().__init__()
+        
+        # Build layers
+        layers = []
+        prev_dim = input_dim
+        
+        for hidden_dim in hidden_dims:
+            layers.append(nn.Linear(prev_dim, hidden_dim))
+            
+            # Activation
+            if activation == 'relu':
+                layers.append(nn.ReLU())
+            elif activation == 'tanh':
+                layers.append(nn.Tanh())
+            elif activation == 'gelu':
+                layers.append(nn.GELU())
+            elif activation == 'leaky_relu':
+                layers.append(nn.LeakyReLU(0.01))
+            
+            # Dropout (if specified)
+            if dropout > 0:
+                layers.append(nn.Dropout(dropout))
+            
+            prev_dim = hidden_dim
+        
+        # Output layer (no activation)
+        layers.append(nn.Linear(prev_dim, output_dim))
+        
+        self.network = nn.Sequential(*layers)
+    
+    def forward(self, x):
+        return self.network(x)
+
+# Usage
+model = MLP(input_dim=10, hidden_dims=[128, 64, 32], output_dim=1,
+            activation='relu', dropout=0.2)
+
+print(model)
+"""
+MLP(
+  (network): Sequential(
+    (0): Linear(in_features=10, out_features=128, bias=True)
+    (1): ReLU()
+    (2): Dropout(p=0.2, inplace=False)
+    (3): Linear(in_features=128, out_features=64, bias=True)
+    (4): ReLU()
+    (5): Dropout(p=0.2, inplace=False)
+    ...
+  )
+)
+"""
+\end{lstlisting}
+
+\clearpage
+\subsubsection{Weight Initialization}
+
+\textbf{Why initialization matters:}
+
+\begin{lstlisting}
+# Bad initialization (too small)
+model = nn.Linear(100, 100)
+with torch.no_grad():
+    model.weight.fill_(0.01)
+    model.bias.fill_(0)
+
+x = torch.randn(1, 100)
+for i in range(10):
+    x = torch.relu(model(x))
+    print(f"Layer {i}: mean={x.mean():.4f}, std={x.std():.4f}")
+# Output: Values shrink to near zero (vanishing)
+
+# Bad initialization (too large)
+model = nn.Linear(100, 100)
+with torch.no_grad():
+    model.weight.fill_(1.0)
+    model.bias.fill_(0)
+
+x = torch.randn(1, 100)
+for i in range(10):
+    x = torch.relu(model(x))
+    print(f"Layer {i}: mean={x.mean():.4f}, std={x.std():.4f}")
+# Output: Values explode (exploding)
+\end{lstlisting}
+
+\textbf{Xavier/Glorot Initialization (for Tanh/Sigmoid):}
+
+Maintains variance across layers for linear activations.
+
+\[
+W \sim \mathcal{U}\left(-\sqrt{\frac{6}{n_{in} + n_{out}}}, \sqrt{\frac{6}{n_{in} + n_{out}}}\right)
+\]
+
+\begin{lstlisting}
+import torch.nn.init as init
+
+# Xavier uniform
+init.xavier_uniform_(model.weight)
+
+# Xavier normal
+init.xavier_normal_(model.weight)
+\end{lstlisting}
+
+\textbf{He/Kaiming Initialization (for ReLU):}
+
+Accounts for ReLU killing half the neurons (setting them to 0).
+
+\[
+W \sim \mathcal{N}\left(0, \sqrt{\frac{2}{n_{in}}}\right)
+\]
+
+\begin{lstlisting}
+# He/Kaiming normal (preferred for ReLU)
+init.kaiming_normal_(model.weight, mode='fan_in', nonlinearity='relu')
+
+# He/Kaiming uniform
+init.kaiming_uniform_(model.weight, nonlinearity='relu')
+\end{lstlisting}
+
+\textbf{Applying initialization to your model:}
+
+\begin{lstlisting}
+def init_weights(m):
+    """Initialize weights for Linear layers."""
+    if isinstance(m, nn.Linear):
+        # He initialization for weights
+        init.kaiming_normal_(m.weight, mode='fan_in', nonlinearity='relu')
+        # Zero initialization for biases
+        if m.bias is not None:
+            init.constant_(m.bias, 0)
+
+# Apply to model
+model = MLP(10, [128, 64], 1)
+model.apply(init_weights)
+
+# Verify
+for name, param in model.named_parameters():
+    if 'weight' in name:
+        print(f"{name}: mean={param.mean():.4f}, std={param.std():.4f}")
+\end{lstlisting}
+
+\begin{pytorchtip}[Initialization Guidelines]
+\textbf{For ReLU networks:} Use He/Kaiming initialization
+\begin{lstlisting}
+init.kaiming_normal_(weight, nonlinearity='relu')
+\end{lstlisting}
+
+\textbf{For Tanh/Sigmoid networks:} Use Xavier/Glorot initialization
+\begin{lstlisting}
+init.xavier_normal_(weight)
+\end{lstlisting}
+
+\textbf{For biases:} Initialize to zero (or small constant)
+\begin{lstlisting}
+init.constant_(bias, 0)
+\end{lstlisting}
+
+\textbf{PyTorch defaults:} Most layers use reasonable defaults (Kaiming uniform for Linear). Explicit initialization is often unnecessary but can help for deep networks.
+\end{pytorchtip}
+
+\clearpage
+\subsubsection{Batch Normalization}
+
+Normalize activations within each mini-batch to stabilize training.
+
+\textbf{How it works:}
+\[
+\hat{x} = \frac{x - \mu_B}{\sqrt{\sigma_B^2 + \epsilon}}
+\]
+\[
+y = \gamma \hat{x} + \beta
+\]
+
+where $\mu_B$, $\sigma_B$ are batch mean/std, and $\gamma$, $\beta$ are learnable parameters.
+
+\begin{lstlisting}
+class MLPWithBatchNorm(nn.Module):
+    def __init__(self, input_dim, hidden_dims, output_dim):
+        super().__init__()
+        
+        layers = []
+        prev_dim = input_dim
+        
+        for hidden_dim in hidden_dims:
+            layers.append(nn.Linear(prev_dim, hidden_dim))
+            layers.append(nn.BatchNorm1d(hidden_dim))  # Add BatchNorm
+            layers.append(nn.ReLU())
+            prev_dim = hidden_dim
+        
+        layers.append(nn.Linear(prev_dim, output_dim))
+        self.network = nn.Sequential(*layers)
+    
+    def forward(self, x):
+        return self.network(x)
+
+# Usage
+model = MLPWithBatchNorm(10, [128, 64], 1)
+\end{lstlisting}
+
+\textbf{Where to place BatchNorm?}
+
+Two conventions:
+\begin{enumerate}
+    \item Linear → BatchNorm → Activation (more common)
+    \item Linear → Activation → BatchNorm
+\end{enumerate}
+
+Both work; the first is more standard.
+
+\textbf{Training vs Eval mode:}
+
+\begin{lstlisting}
+model.train()  # Use batch statistics
+output = model(x)
+
+model.eval()   # Use running statistics
+with torch.no_grad():
+    output = model(x)
+\end{lstlisting}
+
+\begin{warningbox}[BatchNorm Pitfalls]
+\begin{enumerate}
+    \item \textbf{Small batches:} BatchNorm works poorly with batch\_size < 8. Use LayerNorm instead.
+    \item \textbf{Forgetting eval():} Model behaves differently in train/eval mode
+    \item \textbf{Before or after activation:} Be consistent in your architecture
+\end{enumerate}
+\end{warningbox}
+
+\subsubsection{Layer Normalization}
+
+Normalize across features instead of batch:
+
+\[
+\hat{x} = \frac{x - \mu}{\sqrt{\sigma^2 + \epsilon}}
+\]
+
+where $\mu$, $\sigma$ are computed per sample across features.
+
+\begin{lstlisting}
+class MLPWithLayerNorm(nn.Module):
+    def __init__(self, input_dim, hidden_dims, output_dim):
+        super().__init__()
+        
+        layers = []
+        prev_dim = input_dim
+        
+        for hidden_dim in hidden_dims:
+            layers.append(nn.Linear(prev_dim, hidden_dim))
+            layers.append(nn.LayerNorm(hidden_dim))  # LayerNorm
+            layers.append(nn.ReLU())
+            prev_dim = hidden_dim
+        
+        layers.append(nn.Linear(prev_dim, output_dim))
+        self.network = nn.Sequential(*layers)
+    
+    def forward(self, x):
+        return self.network(x)
+\end{lstlisting}
+
+\textbf{BatchNorm vs LayerNorm:}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\toprule
+\textbf{Aspect} & \textbf{BatchNorm} & \textbf{LayerNorm} \\
+\midrule
+Normalizes over & Batch dimension & Feature dimension \\
+Requires batches & Yes (issues with batch=1) & No \\
+Train/eval modes & Different & Same \\
+Use in & CNNs, MLPs & Transformers, RNNs \\
+Typical batch size & $\geq 8$ & Any (even 1) \\
+\bottomrule
+\end{tabular}
+\caption{BatchNorm vs LayerNorm comparison}
+\end{table}
+
+\clearpage
+\subsubsection{Dropout}
+
+Randomly zero out neurons during training to prevent overfitting:
+
+\begin{lstlisting}
+class MLPWithDropout(nn.Module):
+    def __init__(self, input_dim, hidden_dims, output_dim, dropout=0.5):
+        super().__init__()
+        
+        layers = []
+        prev_dim = input_dim
+        
+        for hidden_dim in hidden_dims:
+            layers.append(nn.Linear(prev_dim, hidden_dim))
+            layers.append(nn.ReLU())
+            layers.append(nn.Dropout(dropout))  # Dropout after activation
+            prev_dim = hidden_dim
+        
+        layers.append(nn.Linear(prev_dim, output_dim))
+        self.network = nn.Sequential(*layers)
+    
+    def forward(self, x):
+        return self.network(x)
+
+# Usage
+model = MLPWithDropout(10, [128, 64], 1, dropout=0.5)
+
+# Training: dropout active
+model.train()
+output = model(x)  # Some neurons randomly zeroed
+
+# Eval: dropout disabled
+model.eval()
+output = model(x)  # All neurons active, outputs scaled
+\end{lstlisting}
+
+\textbf{Dropout probabilities:}
+\begin{itemize}
+    \item Typical values: 0.2 - 0.5
+    \item Higher dropout = more regularization (but too high hurts performance)
+    \item Often use different dropout rates per layer (higher in later layers)
+\end{itemize}
+
+\textbf{Where to place dropout:}
+\begin{itemize}
+    \item After activation functions
+    \item \textbf{Not} before the output layer (usually)
+    \item Can place after input layer (input dropout, typically lower rate like 0.1)
+\end{itemize}
+
+\subsubsection{Complete MLP with All Techniques}
+
+\begin{lstlisting}
+class ModernMLP(nn.Module):
+    """MLP with all modern techniques."""
+    
+    def __init__(self, input_dim, hidden_dims, output_dim,
+                 activation='relu', dropout=0.0, use_batch_norm=True):
+        super().__init__()
+        
+        self.input_bn = nn.BatchNorm1d(input_dim) if use_batch_norm else None
+        
+        layers = []
+        prev_dim = input_dim
+        
+        for i, hidden_dim in enumerate(hidden_dims):
+            # Linear layer
+            layers.append(nn.Linear(prev_dim, hidden_dim))
+            
+            # Batch normalization
+            if use_batch_norm:
+                layers.append(nn.BatchNorm1d(hidden_dim))
+            
+            # Activation
+            if activation == 'relu':
+                layers.append(nn.ReLU())
+            elif activation == 'gelu':
+                layers.append(nn.GELU())
+            elif activation == 'leaky_relu':
+                layers.append(nn.LeakyReLU(0.01))
+            
+            # Dropout (if specified)
+            if dropout > 0:
+                layers.append(nn.Dropout(dropout))
+            
+            prev_dim = hidden_dim
+        
+        # Output layer
+        layers.append(nn.Linear(prev_dim, output_dim))
+        
+        self.network = nn.Sequential(*layers)
+        
+        # Initialize weights
+        self.apply(self._init_weights)
+    
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            init.kaiming_normal_(m.weight, nonlinearity='relu')
+            if m.bias is not None:
+                init.constant_(m.bias, 0)
+    
+    def forward(self, x):
+        # Optional input batch norm
+        if self.input_bn is not None:
+            x = self.input_bn(x)
+        return self.network(x)
+
+# Usage: best practices
+model = ModernMLP(
+    input_dim=10,
+    hidden_dims=[256, 128, 64],
+    output_dim=1,
+    activation='relu',
+    dropout=0.3,
+    use_batch_norm=True
+)
+\end{lstlisting}
+
+\clearpage
+% =============================================
+% SECTION 6: MLPs - PART 2 (Debugging & Exercises)
+% =============================================
+
+\subsection{Implementation: Debugging MLPs}
+
+\subsubsection{Checking for Dead ReLUs}
+
+\begin{lstlisting}
+def check_dead_neurons(model, dataloader, device):
+    """Check percentage of dead ReLU neurons."""
+    model.eval()
+    
+    # Hooks to capture activations
+    activations = {}
+    
+    def hook_fn(name):
+        def hook(module, input, output):
+            if name not in activations:
+                activations[name] = []
+            activations[name].append((output == 0).float())
+        return hook
+    
+    # Register hooks on ReLU layers
+    hooks = []
+    for name, module in model.named_modules():
+        if isinstance(module, nn.ReLU):
+            hooks.append(module.register_forward_hook(hook_fn(name)))
+    
+    # Forward pass on some data
+    with torch.no_grad():
+        for data, _ in dataloader:
+            data = data.to(device)
+            model(data)
+            break  # Just one batch
+    
+    # Remove hooks
+    for hook in hooks:
+        hook.remove()
+    
+    # Compute dead neuron percentage
+    for name, acts in activations.items():
+        dead_pct = torch.cat(acts).mean().item() * 100
+        print(f"{name}: {dead_pct:.2f}% neurons always zero")
+
+# Usage
+# check_dead_neurons(model, train_loader, device)
+\end{lstlisting}
+
+\subsubsection{Visualizing Activation Distributions}
+
+\begin{lstlisting}
+import matplotlib.pyplot as plt
+
+def plot_activation_distributions(model, x):
+    """Plot distribution of activations in each layer."""
+    model.eval()
+    
+    activations = []
+    
+    def hook_fn(module, input, output):
+        activations.append(output.detach().cpu().flatten())
+    
+    # Register hooks
+    hooks = []
+    for name, module in model.named_modules():
+        if isinstance(module, (nn.Linear, nn.ReLU)):
+            hooks.append(module.register_forward_hook(hook_fn))
+    
+    # Forward pass
+    with torch.no_grad():
+        model(x)
+    
+    # Remove hooks
+    for hook in hooks:
+        hook.remove()
+    
+    # Plot
+    fig, axes = plt.subplots(len(activations), 1, 
+                            figsize=(10, 3*len(activations)))
+    for i, act in enumerate(activations):
+        axes[i].hist(act.numpy(), bins=50)
+        axes[i].set_title(f'Layer {i} activations')
+        axes[i].set_xlabel('Value')
+        axes[i].set_ylabel('Count')
+    plt.tight_layout()
+    plt.show()
+
+# Usage
+# x = torch.randn(100, 10)
+# plot_activation_distributions(model, x)
+\end{lstlisting}
+
+\subsubsection{Gradient Flow Visualization}
+
+\begin{lstlisting}
+def plot_gradient_flow(model):
+    """
+    Plot gradient flow through network.
+    Call after loss.backward() but before optimizer.step()
+    """
+    ave_grads = []
+    max_grads = []
+    layers = []
+    
+    for name, param in model.named_parameters():
+        if param.requires_grad and param.grad is not None:
+            layers.append(name)
+            ave_grads.append(param.grad.abs().mean().item())
+            max_grads.append(param.grad.abs().max().item())
+    
+    plt.figure(figsize=(12, 6))
+    plt.bar(range(len(ave_grads)), ave_grads, alpha=0.5, label='mean')
+    plt.bar(range(len(max_grads)), max_grads, alpha=0.5, label='max')
+    plt.hlines(0, 0, len(ave_grads), linewidth=2, color='k')
+    plt.xticks(range(len(layers)), layers, rotation='vertical')
+    plt.xlim(-1, len(ave_grads))
+    plt.xlabel('Layers')
+    plt.ylabel('Gradient magnitude')
+    plt.legend()
+    plt.title('Gradient Flow')
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+# Usage in training loop
+# output = model(x)
+# loss = criterion(output, y)
+# loss.backward()
+# plot_gradient_flow(model)  # Before optimizer.step()
+# optimizer.step()
+\end{lstlisting}
+
+\clearpage
+\subsection{Exercises}
+
+\begin{exercise}[6.1: Building Your First MLP - $\bigstar\bigstar$]
+\textbf{Goal:} Create and train a basic MLP.
+
+\begin{enumerate}
+    \item Build an MLP: 20 → 64 → 32 → 1
+    \item Use ReLU activations
+    \item Train on synthetic data: $y = \sum_{i=1}^{20} x_i + \epsilon$
+    \item Use 1000 samples, MSE loss, Adam optimizer
+    \item Train for 100 epochs
+    \item Plot training loss curve
+\end{enumerate}
+
+\textbf{Success criterion:} Final loss < 0.1
+
+\textbf{Starter code:}
+\begin{lstlisting}
+import torch
+import torch.nn as nn
+import torch.optim as optim
+
+# Generate data
+X = torch.randn(1000, 20)
+y = X.sum(dim=1, keepdim=True) + 0.1 * torch.randn(1000, 1)
+
+# Your MLP here
+model = ...
+
+# Training loop here
+\end{lstlisting}
+\end{exercise}
+
+\begin{exercise}[6.2: Activation Function Comparison - $\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Understand how different activations affect training.
+
+Train identical MLPs (3 layers, 64 hidden units) with different activations:
+\begin{enumerate}
+    \item ReLU
+    \item Leaky ReLU
+    \item Tanh
+    \item GELU
+    \item Sigmoid (observe why this is bad for hidden layers!)
+\end{enumerate}
+
+For each:
+\begin{itemize}
+    \item Train on the same task (e.g., nonlinear function approximation)
+    \item Track training loss over epochs
+    \item Measure final test performance
+    \item Plot all loss curves on the same graph
+\end{itemize}
+
+\textbf{Questions to answer:}
+\begin{itemize}
+    \item Which converges fastest?
+    \item Which achieves best final performance?
+    \item Why does sigmoid perform poorly?
+\end{itemize}
+\end{exercise}
+
+\begin{exercise}[6.3: Initialization Impact - $\bigstar\bigstar\bigstar$]
+\textbf{Goal:} See how initialization affects training.
+
+Create the same MLP with different initializations:
+\begin{enumerate}
+    \item All zeros (model won't learn—why?)
+    \item All ones (all neurons learn the same features)
+    \item Random normal with $\sigma=0.01$ (too small)
+    \item Random normal with $\sigma=1.0$ (too large)
+    \item Xavier initialization
+    \item He initialization (best for ReLU)
+\end{enumerate}
+
+For each:
+\begin{itemize}
+    \item Train for 50 epochs
+    \item Track loss
+    \item Check for NaN values
+\end{itemize}
+
+\textbf{Visualize:} Plot all loss curves. Which initializations fail? Which work best?
+\end{exercise}
+
+\begin{exercise}[6.4: Depth vs Width Experiment - $\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Compare deep vs wide networks.
+
+Create networks with approximately the same number of parameters:
+\begin{enumerate}
+    \item \textbf{Shallow \& wide:} 2 layers, 256 neurons each
+    \item \textbf{Deep \& narrow:} 8 layers, 64 neurons each
+    \item \textbf{Medium:} 4 layers, 128 neurons each
+\end{enumerate}
+
+Train all three on a moderately complex task (e.g., 2D function approximation).
+
+\textbf{Compare:}
+\begin{itemize}
+    \item Training speed (epochs to converge)
+    \item Final test performance
+    \item Generalization (train vs test loss gap)
+\end{itemize}
+
+\textbf{Challenge:} Add batch normalization to the deep network. Does it help?
+\end{exercise}
+
+\begin{exercise}[6.5: Regularization Techniques - $\bigstar\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Prevent overfitting with regularization.
+
+\begin{enumerate}
+    \item Create a small dataset (200 samples)
+    \item Build a large MLP (can easily overfit): 10 → 128 → 128 → 64 → 1
+    \item Train without regularization (observe overfitting)
+    \item Add dropout (try 0.1, 0.3, 0.5)
+    \item Add batch normalization
+    \item Add weight decay
+    \item Combine techniques
+\end{enumerate}
+
+For each variant:
+\begin{itemize}
+    \item Track train and validation loss
+    \item Measure final test performance
+    \item Plot train vs val loss curves
+\end{itemize}
+
+\textbf{Questions:}
+\begin{itemize}
+    \item Which technique helps most?
+    \item What's the best combination?
+    \item Can you achieve zero overfitting gap?
+\end{itemize}
+\end{exercise}
+
+\begin{exercise}[6.6: Complex Function Approximation - $\bigstar\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Use MLP for scientific computing task.
+
+Approximate a complex 2D function:
+\[
+f(x, y) = \sin(5x) \cos(5y) + 0.5\sin(10x) + 0.3\cos(10y)
+\]
+
+\begin{enumerate}
+    \item Generate training data: sample $(x, y)$ uniformly in $[-1, 1]^2$
+    \item Create MLP: 2 inputs → hidden layers → 1 output
+    \item Train with MSE loss
+    \item Visualize:
+    \begin{itemize}
+        \item True function as heatmap
+        \item MLP prediction as heatmap
+        \item Absolute error heatmap
+    \end{itemize}
+    \item Try different architectures (depth, width)
+    \item Try different activations
+\end{enumerate}
+
+\textbf{Success criterion:} Mean absolute error < 0.05 on test set
+
+\textbf{Starter code for visualization:}
+\begin{lstlisting}
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Create grid
+x = np.linspace(-1, 1, 100)
+y = np.linspace(-1, 1, 100)
+X, Y = np.meshgrid(x, y)
+
+# True function
+Z_true = np.sin(5*X)*np.cos(5*Y) + 0.5*np.sin(10*X) + 0.3*np.cos(10*Y)
+
+# Model prediction
+grid_points = torch.FloatTensor(np.stack([X.ravel(), Y.ravel()], axis=1))
+with torch.no_grad():
+    Z_pred = model(grid_points).numpy().reshape(X.shape)
+
+# Plot
+fig, axes = plt.subplots(1, 3, figsize=(15, 4))
+axes[0].contourf(X, Y, Z_true, levels=20)
+axes[0].set_title('True Function')
+axes[1].contourf(X, Y, Z_pred, levels=20)
+axes[1].set_title('MLP Prediction')
+axes[2].contourf(X, Y, np.abs(Z_true - Z_pred), levels=20)
+axes[2].set_title('Absolute Error')
+plt.show()
+\end{lstlisting}
+\end{exercise}
+
+\clearpage
+\subsection{Key Takeaways}
+
+\textbf{MLPs are versatile:}
+\begin{itemize}
+    \item Universal function approximators
+    \item Foundation for understanding all neural networks
+    \item Effective for tabular data and function approximation
+\end{itemize}
+
+\textbf{Design choices matter:}
+\begin{itemize}
+    \item \textbf{Activation:} ReLU is default, but consider alternatives for specific tasks
+    \item \textbf{Depth vs Width:} Deeper networks more parameter-efficient but harder to train
+    \item \textbf{Initialization:} He for ReLU, Xavier for Tanh, crucial for deep networks
+    \item \textbf{Normalization:} BatchNorm stabilizes training, especially for deep networks
+    \item \textbf{Regularization:} Dropout and weight decay prevent overfitting
+\end{itemize}
+
+\textbf{Common failure modes:}
+\begin{itemize}
+    \item Dead ReLUs → Use Leaky ReLU or proper initialization
+    \item Vanishing gradients → Use ReLU, batch norm, or skip connections
+    \item Exploding gradients → Use gradient clipping, lower LR, batch norm
+    \item Overfitting → Add dropout, weight decay, or get more data
+\end{itemize}
+
+\textbf{Best practices for MLPs:}
+\begin{enumerate}
+    \item Start with 2-3 hidden layers
+    \item Use ReLU activation
+    \item Initialize with He initialization
+    \item Add batch normalization for deep networks
+    \item Use dropout (0.2-0.5) to prevent overfitting
+    \item Monitor both train and validation loss
+    \item Visualize activations and gradients when debugging
+\end{enumerate}
+
+\clearpage

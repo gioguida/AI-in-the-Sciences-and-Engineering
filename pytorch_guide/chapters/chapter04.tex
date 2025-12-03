@@ -1,0 +1,773 @@
+% =============================================
+% SECTION 4: THE TRAINING LOOP & OPTIMIZERS
+% =============================================
+
+\section{The Training Loop \& Optimizers}
+
+\subsection{Introduction: The Training Process}
+
+We now have all the pieces:
+\begin{itemize}
+    \item \textbf{Tensors:} For data representation
+    \item \textbf{Autograd:} For computing gradients
+    \item \textbf{Modules:} For building models
+\end{itemize}
+
+Now we need to \textbf{train} the model—adjust its parameters to minimize a loss function. This involves:
+\begin{enumerate}
+    \item Forward pass: Compute predictions
+    \item Loss computation: Measure how wrong we are
+    \item Backward pass: Compute gradients
+    \item Parameter update: Move in the direction that reduces loss
+    \item Repeat!
+\end{enumerate}
+
+\subsection{Theory: Gradient Descent and Optimization}
+
+\subsubsection{The Optimization Problem}
+
+Training is an optimization problem. Given:
+\begin{itemize}
+    \item Model $f_\theta$ with parameters $\theta$
+    \item Dataset $\{(x_i, y_i)\}_{i=1}^N$
+    \item Loss function $\mathcal{L}$
+\end{itemize}
+
+We want to find:
+\[
+\theta^* = \arg\min_\theta \frac{1}{N} \sum_{i=1}^N \mathcal{L}(f_\theta(x_i), y_i)
+\]
+
+\subsubsection{Gradient Descent}
+
+The basic update rule:
+\[
+\theta_{t+1} = \theta_t - \eta \nabla_\theta \mathcal{L}
+\]
+
+where $\eta$ is the \textbf{learning rate}.
+
+\textbf{Variants:}
+\begin{itemize}
+    \item \textbf{Batch Gradient Descent:} Use entire dataset (slow, memory intensive)
+    \item \textbf{Stochastic Gradient Descent (SGD):} Use one sample (fast, noisy)
+    \item \textbf{Mini-Batch SGD:} Use a batch of samples (sweet spot)
+\end{itemize}
+
+In practice, we always use mini-batch SGD (typically 32-256 samples per batch).
+
+\subsubsection{Learning Rate}
+
+The learning rate $\eta$ is the most important hyperparameter:
+
+\begin{itemize}
+    \item \textbf{Too large:} Training diverges (loss increases)
+    \item \textbf{Too small:} Training is very slow
+    \item \textbf{Just right:} Steady convergence
+\end{itemize}
+
+Typical ranges: $10^{-4}$ to $10^{-2}$ for Adam, $10^{-3}$ to $10^{-1}$ for SGD.
+
+\begin{theorybox}[Momentum and Adaptive Learning Rates]
+Modern optimizers go beyond basic gradient descent:
+\begin{itemize}
+    \item \textbf{Momentum:} Accumulate gradients over time (helps escape local minima)
+    \item \textbf{Adaptive rates:} Different learning rate for each parameter (Adam, RMSprop)
+\end{itemize}
+These techniques make training more stable and faster.
+\end{theorybox}
+
+\subsection{Implementation: The Standard Training Loop}
+
+\subsubsection{Complete Training Example}
+
+Here's the canonical PyTorch training loop:
+
+\begin{lstlisting}
+import torch
+import torch.nn as nn
+import torch.optim as optim
+
+# 1. CREATE MODEL
+model = nn.Sequential(
+    nn.Linear(10, 50),
+    nn.ReLU(),
+    nn.Linear(50, 1)
+)
+
+# 2. DEFINE LOSS AND OPTIMIZER
+criterion = nn.MSELoss()
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+# 3. CREATE DUMMY DATA (replace with real DataLoader)
+X_train = torch.randn(1000, 10)
+y_train = torch.randn(1000, 1)
+
+# 4. TRAINING LOOP
+num_epochs = 100
+batch_size = 32
+
+for epoch in range(num_epochs):
+    # Shuffle data (simplified; use DataLoader in practice)
+    indices = torch.randperm(len(X_train))
+    
+    epoch_loss = 0.0
+    for i in range(0, len(X_train), batch_size):
+        # Get batch
+        batch_indices = indices[i:i+batch_size]
+        X_batch = X_train[batch_indices]
+        y_batch = y_train[batch_indices]
+        
+        # FORWARD PASS
+        predictions = model(X_batch)
+        loss = criterion(predictions, y_batch)
+        
+        # BACKWARD PASS
+        optimizer.zero_grad()  # Clear old gradients
+        loss.backward()        # Compute new gradients
+        
+        # UPDATE PARAMETERS
+        optimizer.step()
+        
+        epoch_loss += loss.item()
+    
+    # Print progress
+    if (epoch + 1) % 10 == 0:
+        avg_loss = epoch_loss / (len(X_train) / batch_size)
+        print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {avg_loss:.4f}')
+\end{lstlisting}
+
+\begin{pytorchtip}[The Five Steps of Training]
+Every training loop has these steps:
+\begin{enumerate}
+    \item \texttt{optimizer.zero\_grad()}: Clear old gradients
+    \item \texttt{output = model(input)}: Forward pass
+    \item \texttt{loss = criterion(output, target)}: Compute loss
+    \item \texttt{loss.backward()}: Compute gradients
+    \item \texttt{optimizer.step()}: Update parameters
+\end{enumerate}
+Always in this order!
+\end{pytorchtip}
+
+\clearpage
+\subsubsection{Loss Functions}
+
+Different tasks require different loss functions:
+
+\textbf{Regression (continuous output):}
+
+\begin{lstlisting}
+# Mean Squared Error (L2 loss)
+criterion = nn.MSELoss()
+
+# Mean Absolute Error (L1 loss, more robust to outliers)
+criterion = nn.L1Loss()
+
+# Smooth L1 (Huber loss, combines L1 and L2)
+criterion = nn.SmoothL1Loss()
+\end{lstlisting}
+
+\textbf{Binary Classification (0 or 1):}
+
+\begin{lstlisting}
+# Binary Cross Entropy (output must be in [0,1], use sigmoid)
+criterion = nn.BCELoss()
+
+# BCE with built-in sigmoid (more numerically stable)
+criterion = nn.BCEWithLogitsLoss()  # Preferred!
+
+# Example
+model = nn.Sequential(nn.Linear(10, 1))  # No sigmoid in model
+criterion = nn.BCEWithLogitsLoss()
+logits = model(x)  # Raw outputs
+loss = criterion(logits, targets)  # Applies sigmoid internally
+\end{lstlisting}
+
+\textbf{Multi-Class Classification (one of K classes):}
+
+\begin{lstlisting}
+# Cross Entropy Loss (combines LogSoftmax + NLLLoss)
+criterion = nn.CrossEntropyLoss()
+
+# Example
+model = nn.Sequential(nn.Linear(10, 5))  # 5 classes, no softmax!
+criterion = nn.CrossEntropyLoss()
+
+logits = model(x)  # Shape: (batch, 5), raw scores
+targets = torch.tensor([0, 2, 1, 4, 3])  # Class indices
+
+loss = criterion(logits, targets)  # Applies softmax internally
+\end{lstlisting}
+
+\begin{warningbox}[Don't Apply Softmax Before CrossEntropyLoss]
+\texttt{nn.CrossEntropyLoss} expects \textbf{raw logits}, not probabilities. It applies softmax internally for numerical stability. Applying softmax yourself will give wrong results!
+
+\textbf{WRONG:}
+\begin{lstlisting}
+output = torch.softmax(model(x), dim=1)
+loss = nn.CrossEntropyLoss()(output, targets)  # INCORRECT!
+\end{lstlisting}
+
+\textbf{CORRECT:}
+\begin{lstlisting}
+output = model(x)  # Raw logits
+loss = nn.CrossEntropyLoss()(output, targets)  # Correct!
+\end{lstlisting}
+\end{warningbox}
+
+\textbf{Multi-Label Classification (multiple classes can be active):}
+
+\begin{lstlisting}
+# Use BCE with Logits for each class independently
+criterion = nn.BCEWithLogitsLoss()
+
+model = nn.Sequential(nn.Linear(10, 5))  # 5 binary outputs
+logits = model(x)  # Shape: (batch, 5)
+targets = torch.tensor([[1, 0, 1, 0, 0],   # Multiple 1s allowed
+                        [0, 1, 1, 1, 0]])  # Shape: (batch, 5)
+
+loss = criterion(logits, targets.float())
+\end{lstlisting}
+
+\subsubsection{Optimizers}
+
+PyTorch provides many optimizers. Here are the most common:
+
+\textbf{Stochastic Gradient Descent (SGD):}
+
+\begin{lstlisting}
+# Basic SGD
+optimizer = optim.SGD(model.parameters(), lr=0.01)
+
+# SGD with momentum (recommended)
+optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
+
+# SGD with momentum and weight decay (L2 regularization)
+optimizer = optim.SGD(model.parameters(), lr=0.01, 
+                      momentum=0.9, weight_decay=1e-4)
+\end{lstlisting}
+
+\textbf{Adam (Adaptive Moment Estimation):}
+
+\begin{lstlisting}
+# Adam: adaptive learning rates per parameter
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+# Adam with weight decay
+optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-4)
+\end{lstlisting}
+
+\textbf{AdamW (Adam with decoupled weight decay):}
+
+\begin{lstlisting}
+# AdamW: better weight decay than Adam
+optimizer = optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.01)
+\end{lstlisting}
+
+\begin{pytorchtip}[Which Optimizer to Use?]
+\textbf{For most tasks:} Start with \texttt{Adam} or \texttt{AdamW} with lr=0.001
+
+\textbf{Use Adam/AdamW when:}
+\begin{itemize}
+    \item You want fast initial progress
+    \item You're prototyping
+    \item You have many hyperparameters (adaptive rates help)
+\end{itemize}
+
+\textbf{Use SGD with momentum when:}
+\begin{itemize}
+    \item You need the absolute best final performance
+    \item You're training CNNs for vision tasks
+    \item You can afford to tune learning rate carefully
+\end{itemize}
+
+\textbf{General rule:} Adam for fast development, SGD for final tuning.
+\end{pytorchtip}
+
+\clearpage
+\subsubsection{Learning Rate Schedules}
+
+Instead of fixed learning rate, reduce it during training:
+
+\begin{lstlisting}
+import torch.optim.lr_scheduler as lr_scheduler
+
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+# Step decay: reduce LR every step_size epochs
+scheduler = lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1)
+
+# Exponential decay
+scheduler = lr_scheduler.ExponentialLR(optimizer, gamma=0.95)
+
+# Reduce on plateau: reduce when loss stops improving
+scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', 
+                                           factor=0.5, patience=10)
+
+# Cosine annealing: smooth decay to zero
+scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=100)
+
+# Usage in training loop
+for epoch in range(num_epochs):
+    train_one_epoch()
+    
+    # Update learning rate
+    scheduler.step()  # For most schedulers
+    
+    # For ReduceLROnPlateau, pass validation loss
+    # scheduler.step(val_loss)
+    
+    # Check current LR
+    current_lr = optimizer.param_groups[0]['lr']
+    print(f"Current LR: {current_lr}")
+\end{lstlisting}
+
+\textbf{When to use schedules:}
+\begin{itemize}
+    \item Long training runs (>100 epochs)
+    \item When loss plateaus
+    \item Fine-tuning pretrained models
+\end{itemize}
+
+\textbf{When not to use:}
+\begin{itemize}
+    \item Short training (<50 epochs)
+    \item Already using Adam with good convergence
+    \item Adds complexity without clear benefit
+\end{itemize}
+
+\subsubsection{Gradient Clipping}
+
+Prevent exploding gradients by limiting their magnitude:
+
+\begin{lstlisting}
+# Training loop with gradient clipping
+for epoch in range(num_epochs):
+    for batch in dataloader:
+        optimizer.zero_grad()
+        
+        output = model(batch)
+        loss = criterion(output, targets)
+        loss.backward()
+        
+        # Clip gradients by norm
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        
+        optimizer.step()
+\end{lstlisting}
+
+\textbf{Two methods:}
+
+\begin{lstlisting}
+# Clip by norm (preferred): scale down if norm > max_norm
+torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+
+# Clip by value: clamp each gradient to [-clip_value, clip_value]
+torch.nn.utils.clip_grad_value_(model.parameters(), clip_value=0.5)
+\end{lstlisting}
+
+\begin{pytorchtip}[When to Use Gradient Clipping]
+\textbf{Always use for:}
+\begin{itemize}
+    \item RNNs and LSTMs (prone to exploding gradients)
+    \item Transformers
+    \item Any sequence model
+\end{itemize}
+
+\textbf{Often useful for:}
+\begin{itemize}
+    \item Deep networks (>50 layers)
+    \item Training instability
+\end{itemize}
+
+\textbf{Typical values:} max\_norm=1.0 to 5.0
+\end{pytorchtip}
+
+\clearpage
+\subsubsection{Validation Loop}
+
+Always evaluate on held-out data:
+
+\begin{lstlisting}
+def train_epoch(model, dataloader, criterion, optimizer, device):
+    model.train()  # Set to training mode
+    total_loss = 0.0
+    
+    for batch_idx, (data, target) in enumerate(dataloader):
+        data, target = data.to(device), target.to(device)
+        
+        optimizer.zero_grad()
+        output = model(data)
+        loss = criterion(output, target)
+        loss.backward()
+        optimizer.step()
+        
+        total_loss += loss.item()
+    
+    return total_loss / len(dataloader)
+
+def validate(model, dataloader, criterion, device):
+    model.eval()  # Set to evaluation mode
+    total_loss = 0.0
+    correct = 0
+    total = 0
+    
+    with torch.no_grad():  # Disable gradient computation
+        for data, target in dataloader:
+            data, target = data.to(device), target.to(device)
+            
+            output = model(data)
+            loss = criterion(output, target)
+            total_loss += loss.item()
+            
+            # For classification: compute accuracy
+            _, predicted = torch.max(output, 1)
+            total += target.size(0)
+            correct += (predicted == target).sum().item()
+    
+    avg_loss = total_loss / len(dataloader)
+    accuracy = 100 * correct / total
+    return avg_loss, accuracy
+
+# Main training loop
+for epoch in range(num_epochs):
+    train_loss = train_epoch(model, train_loader, criterion, 
+                            optimizer, device)
+    val_loss, val_acc = validate(model, val_loader, criterion, device)
+    
+    print(f'Epoch {epoch+1}: Train Loss={train_loss:.4f}, '
+          f'Val Loss={val_loss:.4f}, Val Acc={val_acc:.2f}%')
+\end{lstlisting}
+
+\begin{warningbox}[Don't Forget model.eval() and torch.no\_grad()]
+When validating:
+\begin{itemize}
+    \item \texttt{model.eval()}: Disables dropout, uses running stats for batch norm
+    \item \texttt{torch.no\_grad()}: Saves memory and computation
+\end{itemize}
+
+Forgetting these can lead to:
+\begin{itemize}
+    \item Incorrect validation metrics
+    \item Out of memory errors
+    \item Slower evaluation
+\end{itemize}
+\end{warningbox}
+
+\subsubsection{Early Stopping}
+
+Stop training when validation loss stops improving:
+
+\begin{lstlisting}
+class EarlyStopping:
+    def __init__(self, patience=10, min_delta=0):
+        """
+        patience: how many epochs to wait after last improvement
+        min_delta: minimum change to qualify as improvement
+        """
+        self.patience = patience
+        self.min_delta = min_delta
+        self.counter = 0
+        self.best_loss = None
+        self.early_stop = False
+    
+    def __call__(self, val_loss):
+        if self.best_loss is None:
+            self.best_loss = val_loss
+        elif val_loss > self.best_loss - self.min_delta:
+            self.counter += 1
+            if self.counter >= self.patience:
+                self.early_stop = True
+        else:
+            self.best_loss = val_loss
+            self.counter = 0
+
+# Usage
+early_stopping = EarlyStopping(patience=10)
+
+for epoch in range(num_epochs):
+    train_loss = train_epoch(...)
+    val_loss, val_acc = validate(...)
+    
+    early_stopping(val_loss)
+    if early_stopping.early_stop:
+        print(f"Early stopping at epoch {epoch+1}")
+        break
+\end{lstlisting}
+
+\clearpage
+\subsection{Implementation: Debugging Training}
+
+\subsubsection{When Training Goes Wrong}
+
+\textbf{Problem: Loss is NaN}
+
+\begin{lstlisting}
+# Check for NaN
+if torch.isnan(loss):
+    print("NaN detected!")
+    print(f"Input contains NaN: {torch.isnan(data).any()}")
+    print(f"Output contains NaN: {torch.isnan(output).any()}")
+    
+    # Check gradients
+    for name, param in model.named_parameters():
+        if param.grad is not None:
+            print(f"{name} grad: {param.grad.abs().max()}")
+\end{lstlisting}
+
+\textbf{Common causes:}
+\begin{itemize}
+    \item Learning rate too high
+    \item Numerical instability (use \texttt{BCEWithLogitsLoss}, not \texttt{BCELoss})
+    \item Division by zero
+    \item Log of zero or negative number
+\end{itemize}
+
+\textbf{Problem: Loss doesn't decrease}
+
+\begin{lstlisting}
+# Sanity checks
+print("Model output range:", output.min().item(), output.max().item())
+print("Target range:", target.min().item(), target.max().item())
+
+# Check if gradients are flowing
+for name, param in model.named_parameters():
+    if param.grad is not None:
+        print(f"{name}: grad mean = {param.grad.abs().mean():.6f}")
+\end{lstlisting}
+
+\textbf{Common causes:}
+\begin{itemize}
+    \item Learning rate too low
+    \item Wrong loss function
+    \item Forgot \texttt{optimizer.zero\_grad()}
+    \item Model architecture issue (dead ReLUs, wrong dimensions)
+    \item Data not normalized
+\end{itemize}
+
+\textbf{Problem: Loss explodes}
+
+\begin{itemize}
+    \item Learning rate too high (reduce by 10x)
+    \item Use gradient clipping
+    \item Check for large batch effects (try smaller batches)
+\end{itemize}
+
+\textbf{Problem: Overfitting (train loss << val loss)}
+
+\begin{lstlisting}
+# Add regularization
+model = nn.Sequential(
+    nn.Linear(10, 50),
+    nn.ReLU(),
+    nn.Dropout(0.5),  # Add dropout
+    nn.Linear(50, 1)
+)
+
+# Add weight decay
+optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-4)
+
+# Use data augmentation (for images)
+# Reduce model size
+# Get more data
+\end{lstlisting}
+
+\textbf{Problem: Underfitting (both losses high)}
+
+\begin{itemize}
+    \item Increase model capacity (more layers, more neurons)
+    \item Train longer
+    \item Increase learning rate
+    \item Remove regularization
+    \item Check if task is actually learnable
+\end{itemize}
+
+\subsubsection{Monitoring Training}
+
+\begin{lstlisting}
+# Track metrics
+train_losses = []
+val_losses = []
+
+for epoch in range(num_epochs):
+    train_loss = train_epoch(...)
+    val_loss, val_acc = validate(...)
+    
+    train_losses.append(train_loss)
+    val_losses.append(val_loss)
+    
+    # Plot periodically
+    if epoch % 10 == 0:
+        import matplotlib.pyplot as plt
+        plt.plot(train_losses, label='Train')
+        plt.plot(val_losses, label='Val')
+        plt.xlabel('Epoch')
+        plt.ylabel('Loss')
+        plt.legend()
+        plt.show()
+\end{lstlisting}
+
+\clearpage
+\subsection{Exercises}
+
+\begin{exercise}[4.1: Basic Training Loop - $\bigstar\bigstar$]
+\textbf{Goal:} Implement a complete training loop from scratch.
+
+Task: Fit a neural network to $y = \sin(x)$ for $x \in [0, 2\pi]$
+
+\begin{enumerate}
+    \item Generate 1000 training samples: $x$ uniform in $[0, 2\pi]$, $y = \sin(x)$ + small noise
+    \item Create a 3-layer MLP: 1 → 50 → 50 → 1 with ReLU
+    \item Use MSE loss and Adam optimizer
+    \item Train for 100 epochs, batch size 32
+    \item Print loss every 10 epochs
+    \item Plot predictions vs true function
+\end{enumerate}
+
+\textbf{Starter code:}
+\begin{lstlisting}
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import numpy as np
+
+# Generate data
+x = torch.linspace(0, 2*np.pi, 1000).reshape(-1, 1)
+y = torch.sin(x) + 0.1 * torch.randn_like(x)
+
+# Your code here
+\end{lstlisting}
+\end{exercise}
+
+\begin{exercise}[4.2: Loss Function Comparison - $\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Understand different loss functions.
+
+Train the same model with different losses:
+\begin{enumerate}
+    \item MSE Loss (L2)
+    \item L1 Loss
+    \item Smooth L1 Loss
+\end{enumerate}
+
+Add outliers to the data (10\% of points with large noise) and compare:
+\begin{itemize}
+    \item Final training loss
+    \item Robustness to outliers
+    \item Convergence speed
+\end{itemize}
+
+Which loss is most robust to outliers?
+\end{exercise}
+
+\begin{exercise}[4.3: Optimizer Comparison - $\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Compare optimizer behavior.
+
+Train the same model with:
+\begin{enumerate}
+    \item SGD (lr=0.01)
+    \item SGD with momentum (lr=0.01, momentum=0.9)
+    \item Adam (lr=0.001)
+    \item AdamW (lr=0.001)
+\end{enumerate}
+
+Plot all loss curves on the same graph. Observations:
+\begin{itemize}
+    \item Which converges fastest initially?
+    \item Which achieves lowest final loss?
+    \item How does momentum help SGD?
+\end{itemize}
+\end{exercise}
+
+\begin{exercise}[4.4: Learning Rate Experiments - $\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Understand learning rate impact.
+
+Train the same model with different learning rates:
+\begin{itemize}
+    \item $10^{-4}$, $10^{-3}$, $10^{-2}$, $10^{-1}$, $1.0$
+\end{itemize}
+
+For each:
+\begin{enumerate}
+    \item Track loss over epochs
+    \item Identify: too small, just right, too large
+    \item Observe divergence (NaN loss) for very large LR
+\end{enumerate}
+
+\textbf{Extra:} Implement a learning rate finder (sweep from small to large, stop when loss diverges).
+\end{exercise}
+
+\begin{exercise}[4.5: Overfitting Detection - $\bigstar\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Identify and prevent overfitting.
+
+\begin{enumerate}
+    \item Generate a small dataset (100 samples)
+    \item Split into train (80) and validation (20)
+    \item Train a large model (can easily overfit)
+    \item Track both train and validation loss
+    \item Identify when overfitting starts (losses diverge)
+    \item Add regularization:
+    \begin{itemize}
+        \item Dropout
+        \item Weight decay
+        \item Early stopping
+    \end{itemize}
+    \item Compare final validation performance
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[4.6: Complete Training Pipeline - $\bigstar\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Build a production-ready training pipeline.
+
+Implement a complete pipeline with:
+\begin{enumerate}
+    \item Data splitting (train/val/test)
+    \item Training loop with progress bars
+    \item Validation after each epoch
+    \item Model checkpointing (save best model)
+    \item Early stopping
+    \item Learning rate scheduling
+    \item Tensorboard logging (optional)
+    \item Final test set evaluation
+\end{enumerate}
+
+Test on a real dataset (e.g., sklearn's make\_classification).
+
+\textbf{Hint:} Use \texttt{tqdm} for progress bars:
+\begin{lstlisting}
+from tqdm import tqdm
+
+for epoch in tqdm(range(num_epochs)):
+    # training code
+\end{lstlisting}
+\end{exercise}
+
+\begin{exercise}[4.7: Debugging Challenge - $\bigstar\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Practice debugging common training issues.
+
+Given buggy training code (deliberately broken):
+
+\begin{lstlisting}
+# This code has 5 bugs - find and fix them!
+model = nn.Sequential(nn.Linear(10, 1), nn.Softmax())
+criterion = nn.CrossEntropyLoss()
+optimizer = optim.Adam(model.parameters(), lr=10.0)
+
+for epoch in range(100):
+    output = model(X_train)
+    loss = criterion(output, y_train)
+    loss.backward()
+    optimizer.step()
+    print(f"Epoch {epoch}, Loss: {loss.item()}")
+\end{lstlisting}
+
+Find and fix:
+\begin{enumerate}
+    \item Wrong activation before CrossEntropyLoss
+    \item Missing \texttt{optimizer.zero\_grad()}
+    \item Learning rate too high
+    \item No train/eval modes
+    \item No validation set
+\end{enumerate}
+\end{exercise}
+
+\clearpage

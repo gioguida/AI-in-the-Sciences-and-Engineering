@@ -1,0 +1,606 @@
+% =============================================
+% SECTION 2: AUTOGRAD - AUTOMATIC DIFFERENTIATION
+% =============================================
+
+\section{Autograd: Automatic Differentiation}
+
+\subsection{Introduction: Why Autograd Matters}
+
+Deep learning is fundamentally an optimization problem. We have a model with parameters (weights), a loss function that measures how wrong our predictions are, and we want to adjust the parameters to minimize the loss.
+
+The key insight: we use \textbf{gradient descent}. We compute the gradient of the loss with respect to each parameter, then update the parameters in the direction that decreases the loss:
+
+\[
+\theta_{\text{new}} = \theta_{\text{old}} - \eta \nabla_\theta \mathcal{L}
+\]
+
+For a neural network with millions of parameters, computing these gradients by hand is impossible. PyTorch's \texttt{autograd} system does this automatically through the chain rule.
+
+\subsection{Theory: Computational Graphs and Backpropagation}
+
+\subsubsection{The Computational Graph}
+
+Every operation you perform on a tensor creates a \textbf{computational graph}. This graph tracks how each tensor was computed from other tensors.
+
+\textbf{Example:} Simple computation
+
+\begin{lstlisting}
+import torch
+
+x = torch.tensor(2.0, requires_grad=True)
+y = torch.tensor(3.0, requires_grad=True)
+z = x * y + x**2  # z = xy + x^2
+\end{lstlisting}
+
+This creates a graph:
+
+\begin{center}
+\begin{verbatim}
+    x (leaf)    y (leaf)
+      |           |
+      +-----+-----+
+      |     |     |
+     x^2    *     |
+       \   /      |
+         +  ------+
+         |
+         z
+\end{verbatim}
+\end{center}
+
+\textbf{Key Concepts:}
+
+\begin{itemize}
+    \item \textbf{Leaf tensors:} Input tensors created by the user with \texttt{requires\_grad=True}
+    \item \textbf{Non-leaf tensors:} Result of operations on other tensors
+    \item \textbf{grad\_fn:} Each non-leaf tensor remembers the operation that created it
+\end{itemize}
+
+\subsubsection{Backpropagation: The Chain Rule}
+
+When you call \texttt{z.backward()}, PyTorch:
+\begin{enumerate}
+    \item Traverses the graph backwards from \texttt{z}
+    \item Applies the chain rule at each operation
+    \item Accumulates gradients in the \texttt{.grad} attribute of leaf tensors
+\end{enumerate}
+
+For our example:
+\[
+\frac{\partial z}{\partial x} = \frac{\partial}{\partial x}(xy + x^2) = y + 2x
+\]
+\[
+\frac{\partial z}{\partial y} = \frac{\partial}{\partial y}(xy + x^2) = x
+\]
+
+With $x=2, y=3$: $\frac{\partial z}{\partial x} = 7$, $\frac{\partial z}{\partial y} = 2$
+
+\begin{theorybox}[Why "Automatic"?]
+You never write the derivative formulas! PyTorch knows the derivative of every operation (add, multiply, sin, exp, matrix multiply, etc.) and chains them automatically. This is the magic of autograd.
+\end{theorybox}
+
+\subsubsection{Dynamic Computation Graphs}
+
+PyTorch uses \textbf{dynamic computation graphs} (define-by-run):
+\begin{itemize}
+    \item The graph is built \textit{during} the forward pass
+    \item You can use Python control flow (if statements, loops)
+    \item The graph can be different each time you run the code
+    \item After \texttt{.backward()}, the graph is \textit{destroyed} (by default)
+\end{itemize}
+
+This is different from TensorFlow 1.x (static graphs) and makes PyTorch more flexible for research.
+
+\subsection{Implementation: Using Autograd in Practice}
+
+\subsubsection{Basic Gradient Computation}
+
+\begin{lstlisting}
+import torch
+
+# Create tensors with gradient tracking
+x = torch.tensor(2.0, requires_grad=True)
+y = torch.tensor(3.0, requires_grad=True)
+
+# Forward pass: compute z
+z = x**2 + 2*x*y + y**2
+
+print(z)  # tensor(25., grad_fn=<AddBackward0>)
+print(z.grad_fn)  # Shows the operation that created z
+
+# Backward pass: compute gradients
+z.backward()
+
+# Gradients are now in .grad
+print(x.grad)  # dz/dx = 2x + 2y = 10
+print(y.grad)  # dz/dy = 2x + 2y = 10
+\end{lstlisting}
+
+\subsubsection{Leaf vs Non-Leaf Tensors}
+
+\begin{lstlisting}
+x = torch.tensor(2.0, requires_grad=True)
+y = x * 2
+
+print(x.is_leaf)  # True - created by user
+print(y.is_leaf)  # False - result of operation
+
+# Only leaf tensors store gradients by default
+z = y.sum()
+z.backward()
+
+print(x.grad)  # Available! x is a leaf
+print(y.grad)  # None! Non-leaf gradients not retained
+\end{lstlisting}
+
+To retain gradients for non-leaf tensors:
+
+\begin{lstlisting}
+x = torch.tensor([1.0, 2.0, 3.0], requires_grad=True)
+y = x * 2
+y.retain_grad()  # Tell PyTorch to keep this gradient
+
+z = y.sum()
+z.backward()
+
+print(x.grad)  # tensor([2., 2., 2.])
+print(y.grad)  # tensor([1., 1., 1.]) - now available!
+\end{lstlisting}
+
+\clearpage
+\subsubsection{Gradient Accumulation and Zeroing}
+
+\begin{warningbox}[Gradients Accumulate!]
+Calling \texttt{.backward()} multiple times \textbf{adds} to existing gradients. You must zero them manually between iterations.
+\end{warningbox}
+
+\begin{lstlisting}
+x = torch.tensor(2.0, requires_grad=True)
+
+# First backward pass
+y = x**2
+y.backward()
+print(x.grad)  # tensor(4.)
+
+# Second backward pass without zeroing
+y = x**2
+y.backward()
+print(x.grad)  # tensor(8.) - DOUBLED!
+
+# Correct approach: zero gradients first
+x.grad.zero_()
+y = x**2
+y.backward()
+print(x.grad)  # tensor(4.) - correct again
+\end{lstlisting}
+
+Why does this matter? In training loops, we compute gradients for each batch and update weights. Between batches, we must zero gradients:
+
+\begin{lstlisting}
+# Training loop pattern (simplified)
+for batch in dataloader:
+    # Zero gradients from previous batch
+    optimizer.zero_grad()  # Or: model.zero_grad()
+    
+    # Forward pass
+    output = model(batch)
+    loss = criterion(output, target)
+    
+    # Backward pass
+    loss.backward()
+    
+    # Update weights
+    optimizer.step()
+\end{lstlisting}
+
+\subsubsection{Vector-Jacobian Products}
+
+\texttt{.backward()} can only be called on scalar outputs (or you must provide a gradient argument):
+
+\begin{lstlisting}
+# Scalar output - works
+x = torch.tensor([1.0, 2.0, 3.0], requires_grad=True)
+y = x.sum()  # Scalar
+y.backward()
+print(x.grad)  # Works!
+
+# Vector output - need gradient argument
+x = torch.tensor([1.0, 2.0, 3.0], requires_grad=True)
+y = x * 2  # Vector: [2, 4, 6]
+# y.backward()  # ERROR! Output is not scalar
+
+# Provide gradient (weights for each output)
+gradient = torch.tensor([1.0, 1.0, 1.0])
+y.backward(gradient)
+print(x.grad)  # tensor([2., 2., 2.])
+\end{lstlisting}
+
+\textbf{What's happening?} When output is a vector $\mathbf{y}$, we compute:
+\[
+\text{x.grad} = \frac{\partial \mathbf{y}}{\partial \mathbf{x}}^T \cdot \text{gradient}
+\]
+
+This is a \textbf{vector-Jacobian product}. For scalar loss, gradient is implicitly 1.
+
+\subsubsection{Disabling Gradient Tracking}
+
+Sometimes you don't need gradients (inference, debugging, certain computations):
+
+\begin{lstlisting}
+x = torch.tensor([1.0, 2.0], requires_grad=True)
+
+# Method 1: torch.no_grad() context
+with torch.no_grad():
+    y = x * 2
+    z = y.sum()
+print(z.requires_grad)  # False
+# z.backward()  # ERROR - can't backprop
+
+# Method 2: detach() - creates a view without gradients
+y = x * 2
+y_detached = y.detach()
+print(y.requires_grad)         # True
+print(y_detached.requires_grad) # False
+
+# Method 3: requires_grad_() - in-place toggle
+x = torch.tensor([1.0, 2.0], requires_grad=True)
+x.requires_grad_(False)
+print(x.requires_grad)  # False
+\end{lstlisting}
+
+\begin{pytorchtip}[When to Disable Gradients]
+\begin{itemize}
+    \item \textbf{Inference:} Use \texttt{torch.no\_grad()} or \texttt{torch.inference\_mode()} for evaluation
+    \item \textbf{Freezing layers:} Set \texttt{param.requires\_grad = False} for parameters you don't want to train
+    \item \textbf{Saving memory:} Gradient tracking uses extra memory
+    \item \textbf{Performance:} Operations are faster without gradient tracking
+\end{itemize}
+\end{pytorchtip}
+
+\clearpage
+\subsubsection{In-Place Operations}
+
+\begin{warningbox}[In-Place Operations Break Gradients]
+In-place operations (those ending with \texttt{\_}) can cause errors in backpropagation.
+\end{warningbox}
+
+\begin{lstlisting}
+# BAD: In-place operation on tensor used in computation
+x = torch.tensor([1.0, 2.0], requires_grad=True)
+y = x * 2
+x.add_(1)  # Modifies x in-place
+# y.backward(torch.ones_like(y))  # ERROR! x was modified
+
+# GOOD: Don't modify tensors that are part of the graph
+x = torch.tensor([1.0, 2.0], requires_grad=True)
+y = x * 2
+z = y.sum()
+z.backward()  # Works!
+\end{lstlisting}
+
+However, in-place operations are fine for parameters during optimization (outside the graph):
+
+\begin{lstlisting}
+# This is OK - happens after .backward()
+with torch.no_grad():
+    x.add_(-learning_rate * x.grad)
+\end{lstlisting}
+
+\subsubsection{Retaining Graphs}
+
+By default, the computation graph is freed after \texttt{.backward()}:
+
+\begin{lstlisting}
+x = torch.tensor(2.0, requires_grad=True)
+y = x**2
+y.backward()
+# y.backward()  # ERROR! Graph was freed
+
+# To keep the graph:
+x = torch.tensor(2.0, requires_grad=True)
+y = x**2
+y.backward(retain_graph=True)
+y.backward()  # OK now! But remember to zero gradients if needed
+\end{lstlisting}
+
+When is this useful? Multiple backward passes (rare), or when you need to call \texttt{.backward()} multiple times in a single forward pass.
+
+\subsubsection{Higher-Order Derivatives}
+
+PyTorch can compute gradients of gradients:
+
+\begin{lstlisting}
+# First derivative
+x = torch.tensor(2.0, requires_grad=True)
+y = x**3  # y = x^3
+
+dy_dx = torch.autograd.grad(y, x, create_graph=True)[0]
+print(dy_dx)  # 3*x^2 = 12
+
+# Second derivative
+d2y_dx2 = torch.autograd.grad(dy_dx, x)[0]
+print(d2y_dx2)  # 6*x = 12
+\end{lstlisting}
+
+\textbf{Note:} We use \texttt{torch.autograd.grad()} instead of \texttt{.backward()} here because it gives us the gradient as a tensor (useful for higher-order derivatives).
+
+\begin{pytorchtip}[torch.autograd.grad vs .backward()]
+\begin{itemize}
+    \item \texttt{.backward()}: Accumulates gradients in \texttt{.grad} attribute. Standard for training.
+    \item \texttt{torch.autograd.grad()}: Returns gradients as tensors. Useful for:
+    \begin{itemize}
+        \item Higher-order derivatives
+        \item Multiple gradient computations
+        \item When you need gradient as a value, not accumulated
+    \end{itemize}
+\end{itemize}
+\end{pytorchtip}
+
+\subsection{Implementation: Common Patterns and Debugging}
+
+\subsubsection{Checking Gradients}
+
+When implementing custom operations or debugging, verify gradients numerically:
+
+\begin{lstlisting}
+import torch
+
+def numerical_gradient(f, x, eps=1e-5):
+    """Compute gradient numerically using finite differences."""
+    grad = torch.zeros_like(x)
+    for i in range(x.numel()):
+        x_plus = x.clone()
+        x_plus.flatten()[i] += eps
+        x_minus = x.clone()
+        x_minus.flatten()[i] -= eps
+        grad.flatten()[i] = (f(x_plus) - f(x_minus)) / (2 * eps)
+    return grad
+
+# Test it
+x = torch.tensor([2.0, 3.0], requires_grad=True)
+f = lambda t: (t**2).sum()
+
+# Analytical gradient
+y = f(x)
+y.backward()
+analytical_grad = x.grad
+
+# Numerical gradient
+numerical_grad = numerical_gradient(f, x)
+
+print("Analytical:", analytical_grad)  # [4., 6.]
+print("Numerical:", numerical_grad)    # [4., 6.] (approximately)
+print("Close?", torch.allclose(analytical_grad, numerical_grad))
+\end{lstlisting}
+
+PyTorch also provides \texttt{torch.autograd.gradcheck}:
+
+\begin{lstlisting}
+from torch.autograd import gradcheck
+
+x = torch.randn(3, 4, requires_grad=True, dtype=torch.float64)
+func = lambda t: (t**2).sum()
+
+# Check if gradients are correct
+test = gradcheck(func, x, eps=1e-6)
+print(f"Gradient check passed: {test}")
+\end{lstlisting}
+
+\subsubsection{Gradient Flow Debugging}
+
+When training doesn't work, check if gradients are flowing:
+
+\begin{lstlisting}
+import torch.nn as nn
+
+# Simple model
+model = nn.Sequential(
+    nn.Linear(10, 50),
+    nn.ReLU(),
+    nn.Linear(50, 1)
+)
+
+# Forward pass
+x = torch.randn(32, 10)
+y = model(x)
+loss = y.mean()
+
+# Backward pass
+loss.backward()
+
+# Check gradients
+for name, param in model.named_parameters():
+    if param.grad is not None:
+        print(f"{name}: grad mean = {param.grad.abs().mean():.6f}")
+    else:
+        print(f"{name}: NO GRADIENT!")
+\end{lstlisting}
+
+Common issues:
+\begin{itemize}
+    \item \textbf{All zeros:} Dead ReLUs, wrong loss function
+    \item \textbf{None:} Part of model disconnected from loss
+    \item \textbf{Very large:} Exploding gradients (lower learning rate, add gradient clipping)
+    \item \textbf{Very small:} Vanishing gradients (different architecture, normalization)
+\end{itemize}
+
+\clearpage
+\subsubsection{Custom Autograd Functions}
+
+For operations PyTorch doesn't support, or to override gradients:
+
+\begin{lstlisting}
+class MySquare(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input):
+        """
+        Forward pass: compute output and save what's needed for backward.
+        ctx is a context object for saving information.
+        """
+        ctx.save_for_backward(input)
+        return input ** 2
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        """
+        Backward pass: compute gradient of loss w.r.t. input.
+        grad_output is the gradient of loss w.r.t. output.
+        Return gradient w.r.t. each input (input only here).
+        """
+        input, = ctx.saved_tensors
+        grad_input = grad_output * 2 * input
+        return grad_input
+
+# Use it
+x = torch.tensor([1.0, 2.0, 3.0], requires_grad=True)
+y = MySquare.apply(x)  # Note: .apply() not ()
+z = y.sum()
+z.backward()
+
+print(x.grad)  # [2., 4., 6.] = 2*x
+\end{lstlisting}
+
+We'll use this for the exercises!
+
+\subsection{Exercises}
+
+\begin{exercise}[2.1: Basic Gradient Computation - $\bigstar\bigstar$]
+\textbf{Goal:} Get comfortable with \texttt{.backward()} and \texttt{.grad}.
+
+\begin{enumerate}
+    \item Create tensors $a=3$, $b=4$ with \texttt{requires\_grad=True}
+    \item Compute $c = a^2 + b^2$
+    \item Call \texttt{c.backward()} and verify:
+    \begin{itemize}
+        \item \texttt{a.grad} = $2a = 6$
+        \item \texttt{b.grad} = $2b = 8$
+    \end{itemize}
+    \item Now compute $d = 2a + 3b$ and call \texttt{d.backward()}
+    \item What are \texttt{a.grad} and \texttt{b.grad} now? Why?
+\end{enumerate}
+
+\textbf{Hint:} Remember that gradients accumulate!
+\end{exercise}
+
+\begin{exercise}[2.2: Matrix Gradients - $\bigstar\bigstar$]
+\textbf{Goal:} Understand gradients for matrix operations.
+
+\begin{enumerate}
+    \item Create matrix $W$ of shape (3, 4) with random values, \texttt{requires\_grad=True}
+    \item Create input $x$ of shape (4,) with random values (no gradients needed)
+    \item Compute $y = Wx$ (matrix-vector product)
+    \item Compute $L = ||y||^2$ (sum of squares)
+    \item Call \texttt{L.backward()} and check the shape of \texttt{W.grad}
+    \item Verify it has the same shape as $W$
+\end{enumerate}
+
+\textbf{Starter code:}
+\begin{lstlisting}
+import torch
+torch.manual_seed(42)
+
+W = torch.randn(3, 4, requires_grad=True)
+x = torch.randn(4)
+
+# Your code here
+\end{lstlisting}
+\end{exercise}
+
+\begin{exercise}[2.3: Gradient Accumulation - $\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Master gradient zeroing in training loops.
+
+Implement a mini training loop (without a real model):
+\begin{enumerate}
+    \item Create a parameter \texttt{w} initialized to 5.0
+    \item For 10 iterations:
+    \begin{itemize}
+        \item Compute $\text{loss} = (w - 2)^2$ (we want w to reach 2)
+        \item Compute gradient
+        \item Update: $w = w - 0.1 \cdot \text{grad}$
+        \item \textbf{Zero the gradient}
+    \end{itemize}
+    \item Print the final value of \texttt{w} (should be close to 2)
+\end{enumerate}
+
+\textbf{Hint:} Use \texttt{with torch.no\_grad():} for the update step.
+\end{exercise}
+
+\begin{exercise}[2.4: Gradient Detaching - $\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Understand when and why to detach gradients.
+
+\begin{enumerate}
+    \item Create $x = [1, 2, 3]$ with gradients
+    \item Compute $y = x^2$
+    \item Detach $y$ to create $y_{\text{detach}}$
+    \item Compute $z_1 = y.sum()$ and $z_2 = y_{\text{detach}}.sum()$
+    \item Try to call \texttt{z1.backward()} - what happens?
+    \item Try to call \texttt{z2.backward()} - what happens?
+    \item Why would detaching be useful in training?
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[2.5: Higher-Order Derivatives - $\bigstar\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Compute second derivatives (useful for some scientific ML methods).
+
+\begin{enumerate}
+    \item Create $x = 2.0$ with gradients
+    \item Compute $y = \sin(x)$
+    \item Use \texttt{torch.autograd.grad()} to compute $\frac{dy}{dx}$ with \texttt{create\_graph=True}
+    \item Compute the second derivative $\frac{d^2y}{dx^2}$
+    \item Verify analytically: $y=\sin(x) \Rightarrow y'=\cos(x) \Rightarrow y''=-\sin(x)$
+    \item At $x=2$: $y''=-\sin(2) \approx -0.909$
+\end{enumerate}
+
+\textbf{Starter code:}
+\begin{lstlisting}
+import torch
+
+x = torch.tensor(2.0, requires_grad=True)
+y = torch.sin(x)
+
+# First derivative
+dy_dx = torch.autograd.grad(y, x, create_graph=True)[0]
+
+# Your code for second derivative
+\end{lstlisting}
+\end{exercise}
+
+\begin{exercise}[2.6: Custom Autograd Function - $\bigstar\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Implement a custom operation with manual gradient.
+
+Implement a custom \textbf{sigmoid} function:
+\begin{enumerate}
+    \item Forward: $\sigma(x) = \frac{1}{1 + e^{-x}}$
+    \item Backward: $\frac{d\sigma}{dx} = \sigma(x)(1 - \sigma(x))$
+    \item Inherit from \texttt{torch.autograd.Function}
+    \item Implement \texttt{forward()} and \texttt{backward()} static methods
+    \item Test it on $x = [0, 1, 2]$
+    \item Verify gradient using \texttt{torch.autograd.gradcheck}
+\end{enumerate}
+
+\textbf{Hint:} In \texttt{backward()}, you'll need the output of sigmoid. You can either:
+\begin{itemize}
+    \item Save the output in \texttt{forward} using \texttt{ctx.save\_for\_backward}
+    \item Or recompute it from the saved input
+\end{itemize}
+
+\textbf{Starter code:}
+\begin{lstlisting}
+class MySigmoid(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input):
+        # Your code here
+        pass
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        # Your code here
+        pass
+
+# Test
+x = torch.tensor([0.0, 1.0, 2.0], requires_grad=True)
+y = MySigmoid.apply(x)
+\end{lstlisting}
+\end{exercise}
+
+\clearpage

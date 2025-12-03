@@ -1,0 +1,768 @@
+% =============================================
+% PART III: PRACTICAL SKILLS
+% =============================================
+
+\part{Practical Skills}
+
+% =============================================
+% SECTION 13: DEBUGGING & BEST PRACTICES
+% =============================================
+
+\section{Debugging \& Best Practices}
+
+\subsection{Introduction: Why Debugging Matters}
+
+Deep learning is full of silent failures:
+\begin{itemize}
+    \item Model trains but doesn't learn (loss stuck at baseline)
+    \item Loss is NaN after a few iterations
+    \item Training loss decreases but validation doesn't
+    \item Model works on toy data but fails on real data
+    \item Gradients vanish or explode
+\end{itemize}
+
+Unlike traditional programming where bugs crash immediately, deep learning bugs often manifest as \textbf{poor performance}. You need systematic debugging strategies.
+
+\subsection{Common Bugs and How to Fix Them}
+
+\subsubsection{Bug 1: Loss is NaN}
+
+\textbf{Symptoms:}
+\begin{lstlisting}
+Epoch 1: loss = 2.345
+Epoch 2: loss = 1.876
+Epoch 3: loss = nan
+\end{lstlisting}
+
+\textbf{Causes and fixes:}
+
+\textbf{1. Learning rate too high}
+\begin{lstlisting}
+# Check: Does loss explode before NaN?
+# Fix: Reduce learning rate
+optimizer = torch.optim.Adam(model.parameters(), lr=1e-5)  # Try lower
+\end{lstlisting}
+
+\textbf{2. Numerical instability in loss}
+\begin{lstlisting}
+# BAD: Manual log can cause NaN
+loss = -torch.log(predictions)  # NaN if predictions = 0
+
+# GOOD: Use stable implementations
+loss = F.cross_entropy(logits, targets)  # Numerically stable
+# or
+loss = F.binary_cross_entropy_with_logits(logits, targets)
+\end{lstlisting}
+
+\textbf{3. Exploding gradients (RNNs)}
+\begin{lstlisting}
+# Fix: Add gradient clipping
+torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+\end{lstlisting}
+
+\textbf{4. Data contains NaN or Inf}
+\begin{lstlisting}
+# Check data
+print(torch.isnan(data).any())
+print(torch.isinf(data).any())
+
+# Fix: Clean data or add checks
+data = torch.nan_to_num(data, nan=0.0, posinf=1e6, neginf=-1e6)
+\end{lstlisting}
+
+\textbf{Detection code:}
+\begin{lstlisting}
+def check_for_nan(model, data, target):
+    """Debug NaN issues."""
+    # Check inputs
+    print(f"Data has NaN: {torch.isnan(data).any()}")
+    print(f"Data has Inf: {torch.isinf(data).any()}")
+    
+    # Forward pass
+    output = model(data)
+    print(f"Output has NaN: {torch.isnan(output).any()}")
+    
+    # Backward pass
+    loss = criterion(output, target)
+    print(f"Loss has NaN: {torch.isnan(loss).any()}")
+    loss.backward()
+    
+    # Check gradients
+    for name, param in model.named_parameters():
+        if param.grad is not None:
+            if torch.isnan(param.grad).any():
+                print(f"NaN gradient in {name}")
+            if torch.isinf(param.grad).any():
+                print(f"Inf gradient in {name}")
+\end{lstlisting}
+
+\clearpage
+\subsubsection{Bug 2: Loss Not Decreasing}
+
+\textbf{Symptoms:}
+\begin{lstlisting}
+Epoch 1: loss = 2.345
+Epoch 2: loss = 2.342
+Epoch 3: loss = 2.340
+...
+Epoch 100: loss = 2.300  # Barely moving
+\end{lstlisting}
+
+\textbf{Causes and fixes:}
+
+\textbf{1. Learning rate too low}
+\begin{lstlisting}
+# Fix: Increase learning rate
+optimizer = torch.optim.Adam(model.parameters(), lr=1e-2)  # Try higher
+
+# Or use learning rate finder
+def find_lr(model, train_loader, init_lr=1e-8, final_lr=10):
+    """Find optimal learning rate."""
+    lrs = []
+    losses = []
+    
+    optimizer = torch.optim.SGD(model.parameters(), lr=init_lr)
+    lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(
+        optimizer, gamma=(final_lr/init_lr)**(1/100)
+    )
+    
+    for batch in train_loader:
+        optimizer.zero_grad()
+        loss = compute_loss(model, batch)
+        loss.backward()
+        optimizer.step()
+        
+        lrs.append(optimizer.param_groups[0]['lr'])
+        losses.append(loss.item())
+        
+        lr_scheduler.step()
+        
+        if len(lrs) >= 100:
+            break
+    
+    # Plot
+    import matplotlib.pyplot as plt
+    plt.plot(lrs, losses)
+    plt.xscale('log')
+    plt.xlabel('Learning Rate')
+    plt.ylabel('Loss')
+    plt.title('Learning Rate Finder')
+    plt.show()
+    
+    # Optimal LR is usually where loss decreases fastest
+    # (steepest negative gradient)
+\end{lstlisting}
+
+\textbf{2. Wrong loss function}
+\begin{lstlisting}
+# BAD: Using MSE for classification
+criterion = nn.MSELoss()  # Wrong for discrete labels!
+
+# GOOD: Use appropriate loss
+criterion = nn.CrossEntropyLoss()  # For classification
+\end{lstlisting}
+
+\textbf{3. Forgot to zero gradients}
+\begin{lstlisting}
+# BAD: Gradients accumulate
+for batch in dataloader:
+    loss = criterion(model(x), y)
+    loss.backward()
+    optimizer.step()  # FORGOT optimizer.zero_grad()!
+
+# GOOD:
+for batch in dataloader:
+    optimizer.zero_grad()  # Always zero first!
+    loss = criterion(model(x), y)
+    loss.backward()
+    optimizer.step()
+\end{lstlisting}
+
+\textbf{4. Data not normalized}
+\begin{lstlisting}
+# Check data range
+print(f"Data min: {data.min()}, max: {data.max()}")
+
+# Fix: Normalize
+mean = data.mean()
+std = data.std()
+data = (data - mean) / (std + 1e-8)
+\end{lstlisting}
+
+\textbf{5. Dead ReLUs or vanishing gradients}
+\begin{lstlisting}
+# Check activation distributions
+def check_activations(model, data):
+    activations = {}
+    
+    def hook(name):
+        def hook_fn(module, input, output):
+            activations[name] = output.detach()
+        return hook_fn
+    
+    # Register hooks
+    for name, module in model.named_modules():
+        if isinstance(module, nn.ReLU):
+            module.register_forward_hook(hook(name))
+    
+    model(data)
+    
+    # Check what percentage is zero
+    for name, act in activations.items():
+        zero_pct = (act == 0).float().mean() * 100
+        print(f"{name}: {zero_pct:.1f}% zeros")
+        
+        if zero_pct > 50:
+            print(f"  WARNING: More than 50% dead neurons!")
+
+# Fix: Use Leaky ReLU or adjust initialization
+\end{lstlisting}
+
+\clearpage
+\subsubsection{Bug 3: Training Loss Decreases, Validation Doesn't}
+
+\textbf{Symptoms:} Overfitting
+
+\textbf{Causes and fixes:}
+
+\textbf{1. Model too complex for data}
+\begin{lstlisting}
+# Fix: Reduce model size
+model = SmallNet()  # Fewer layers, fewer parameters
+
+# Or increase data
+# Or add regularization (see below)
+\end{lstlisting}
+
+\textbf{2. No regularization}
+\begin{lstlisting}
+# Add dropout
+model = nn.Sequential(
+    nn.Linear(100, 128),
+    nn.ReLU(),
+    nn.Dropout(0.5),  # Add dropout
+    nn.Linear(128, 10)
+)
+
+# Add weight decay
+optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, 
+                            weight_decay=1e-4)  # L2 regularization
+
+# Add data augmentation
+transform = transforms.Compose([
+    transforms.RandomHorizontalFlip(),
+    transforms.RandomCrop(32, padding=4),
+    transforms.ToTensor()
+])
+\end{lstlisting}
+
+\textbf{3. Training too long}
+\begin{lstlisting}
+# Implement early stopping
+class EarlyStopping:
+    def __init__(self, patience=10, min_delta=0):
+        self.patience = patience
+        self.min_delta = min_delta
+        self.counter = 0
+        self.best_loss = None
+        self.should_stop = False
+    
+    def __call__(self, val_loss):
+        if self.best_loss is None:
+            self.best_loss = val_loss
+        elif val_loss > self.best_loss - self.min_delta:
+            self.counter += 1
+            if self.counter >= self.patience:
+                self.should_stop = True
+        else:
+            self.best_loss = val_loss
+            self.counter = 0
+
+# Usage
+early_stopping = EarlyStopping(patience=10)
+
+for epoch in range(max_epochs):
+    train_loss = train_epoch()
+    val_loss = validate()
+    
+    early_stopping(val_loss)
+    if early_stopping.should_stop:
+        print(f"Early stopping at epoch {epoch}")
+        break
+\end{lstlisting}
+
+\subsubsection{Bug 4: Model Works on Small Data, Fails on Full Dataset}
+
+\textbf{Causes and fixes:}
+
+\textbf{1. Batch size too small}
+\begin{lstlisting}
+# Batch norm unstable with small batches
+# Fix: Increase batch size or use Layer Norm
+
+# Or use Gradient Accumulation
+accumulation_steps = 4
+
+for i, batch in enumerate(dataloader):
+    loss = criterion(model(x), y)
+    loss = loss / accumulation_steps  # Scale loss
+    loss.backward()
+    
+    if (i + 1) % accumulation_steps == 0:
+        optimizer.step()
+        optimizer.zero_grad()
+\end{lstlisting}
+
+\textbf{2. Data distribution shift}
+\begin{lstlisting}
+# Check: Are train and val distributions similar?
+def check_distribution(train_data, val_data):
+    print(f"Train mean: {train_data.mean()}, std: {train_data.std()}")
+    print(f"Val mean: {val_data.mean()}, std: {val_data.std()}")
+    
+    # Visualize
+    import matplotlib.pyplot as plt
+    plt.hist(train_data.flatten(), bins=50, alpha=0.5, label='Train')
+    plt.hist(val_data.flatten(), bins=50, alpha=0.5, label='Val')
+    plt.legend()
+    plt.show()
+
+# Fix: Normalize using training statistics
+mean = train_data.mean()
+std = train_data.std()
+
+train_data = (train_data - mean) / std
+val_data = (val_data - mean) / std  # Use training stats!
+\end{lstlisting}
+
+\clearpage
+\subsection{Debugging Strategies}
+
+\subsubsection{Start Simple, Add Complexity}
+
+\textbf{Step 1: Overfit on one batch}
+
+If you can't overfit one batch, something is fundamentally wrong.
+
+\begin{lstlisting}
+# Get one batch
+x, y = next(iter(train_loader))
+
+# Try to overfit it
+for epoch in range(1000):
+    optimizer.zero_grad()
+    output = model(x)
+    loss = criterion(output, y)
+    loss.backward()
+    optimizer.step()
+    
+    if epoch % 100 == 0:
+        print(f"Epoch {epoch}: Loss = {loss.item():.4f}")
+
+# Should reach near-zero loss
+# If not, check:
+# - Model has enough capacity
+# - Loss function is correct
+# - Learning rate is reasonable
+\end{lstlisting}
+
+\textbf{Step 2: Overfit on small dataset}
+
+Try 100 samples. Should still overfit easily.
+
+\textbf{Step 3: Add validation}
+
+Once overfitting works, add validation and regularization.
+
+\textbf{Step 4: Scale to full dataset}
+
+Now train on full data with proper regularization.
+
+\subsubsection{Check Shapes at Every Step}
+
+\begin{lstlisting}
+def debug_shapes(model, x):
+    """Print shapes through the network."""
+    print(f"Input: {x.shape}")
+    
+    for i, (name, module) in enumerate(model.named_children()):
+        x = module(x)
+        print(f"{i}. {name}: {x.shape}")
+    
+    return x
+
+# Usage
+x = torch.randn(4, 3, 32, 32)
+output = debug_shapes(model, x)
+"""
+Input: torch.Size([4, 3, 32, 32])
+0. conv1: torch.Size([4, 64, 32, 32])
+1. relu: torch.Size([4, 64, 32, 32])
+2. pool: torch.Size([4, 64, 16, 16])
+...
+"""
+\end{lstlisting}
+
+\subsubsection{Visualize Gradients}
+
+\begin{lstlisting}
+def plot_grad_flow(named_parameters):
+    """
+    Plots gradient flow through the network.
+    Helps identify vanishing/exploding gradients.
+    """
+    ave_grads = []
+    max_grads = []
+    layers = []
+    
+    for n, p in named_parameters:
+        if p.requires_grad and p.grad is not None:
+            layers.append(n)
+            ave_grads.append(p.grad.abs().mean().item())
+            max_grads.append(p.grad.abs().max().item())
+    
+    import matplotlib.pyplot as plt
+    plt.figure(figsize=(12, 6))
+    plt.bar(range(len(ave_grads)), ave_grads, alpha=0.5, label='mean')
+    plt.bar(range(len(max_grads)), max_grads, alpha=0.5, label='max')
+    plt.hlines(0, 0, len(ave_grads), linewidth=2, color='k')
+    plt.xticks(range(len(layers)), layers, rotation='vertical')
+    plt.xlabel('Layers')
+    plt.ylabel('Gradient magnitude')
+    plt.legend()
+    plt.title('Gradient Flow')
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+# Usage after loss.backward()
+plot_grad_flow(model.named_parameters())
+\end{lstlisting}
+
+\subsubsection{Use Hooks for Debugging}
+
+\begin{lstlisting}
+# Forward hook: inspect activations
+def forward_hook(module, input, output):
+    print(f"Forward: {output.shape}, mean={output.mean():.4f}")
+
+# Backward hook: inspect gradients
+def backward_hook(module, grad_input, grad_output):
+    print(f"Backward: grad mean={grad_output[0].mean():.4f}")
+
+# Register hooks
+for name, module in model.named_modules():
+    if isinstance(module, nn.Linear):
+        module.register_forward_hook(forward_hook)
+        module.register_backward_hook(backward_hook)
+
+# Now run forward and backward
+output = model(x)
+loss = criterion(output, y)
+loss.backward()
+
+# Hooks will print debug info
+\end{lstlisting}
+
+\clearpage
+\subsection{Best Practices for Development}
+
+\subsubsection{Code Organization}
+
+\textbf{Project structure:}
+\begin{verbatim}
+project/
+├── data/
+│   ├── __init__.py
+│   ├── dataset.py        # Dataset classes
+│   └── transforms.py     # Data augmentation
+├── models/
+│   ├── __init__.py
+│   ├── resnet.py         # Model architectures
+│   └── utils.py          # Model utilities
+├── utils/
+│   ├── __init__.py
+│   ├── train.py          # Training utilities
+│   ├── eval.py           # Evaluation utilities
+│   └── metrics.py        # Custom metrics
+├── configs/
+│   └── config.yaml       # Hyperparameters
+├── train.py              # Main training script
+├── evaluate.py           # Evaluation script
+└── requirements.txt      # Dependencies
+\end{verbatim}
+
+\textbf{Separate concerns:}
+\begin{lstlisting}
+# models/resnet.py
+class ResNet(nn.Module):
+    """Model definition only."""
+    def __init__(self, ...):
+        # Architecture
+    
+    def forward(self, x):
+        # Forward pass
+        return x
+
+# utils/train.py
+def train_epoch(model, loader, optimizer, criterion, device):
+    """Training logic."""
+    model.train()
+    total_loss = 0
+    
+    for batch in loader:
+        # Training step
+        ...
+    
+    return total_loss / len(loader)
+
+# train.py
+def main():
+    # Configuration
+    # Data loading
+    # Model creation
+    # Training loop
+    pass
+
+if __name__ == "__main__":
+    main()
+\end{lstlisting}
+
+\subsubsection{Configuration Management}
+
+\begin{lstlisting}
+# config.yaml
+model:
+  type: resnet18
+  num_classes: 10
+
+training:
+  batch_size: 128
+  epochs: 100
+  learning_rate: 0.001
+  weight_decay: 0.0001
+
+data:
+  root: ./data
+  num_workers: 4
+  augmentation: true
+
+# Load config
+import yaml
+
+with open('config.yaml', 'r') as f:
+    config = yaml.safe_load(f)
+
+# Use config
+batch_size = config['training']['batch_size']
+lr = config['training']['learning_rate']
+\end{lstlisting}
+
+\subsubsection{Experiment Tracking}
+
+\begin{lstlisting}
+# Simple logging
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('training.log'),
+        logging.StreamHandler()
+    ]
+)
+
+logger = logging.getLogger(__name__)
+
+# Use in training
+logger.info(f"Epoch {epoch}: Train Loss = {train_loss:.4f}")
+
+# TensorBoard (better)
+from torch.utils.tensorboard import SummaryWriter
+
+writer = SummaryWriter('runs/experiment_1')
+
+for epoch in range(num_epochs):
+    train_loss = train_epoch()
+    val_loss = validate()
+    
+    writer.add_scalar('Loss/train', train_loss, epoch)
+    writer.add_scalar('Loss/val', val_loss, epoch)
+    writer.add_scalar('LR', optimizer.param_groups[0]['lr'], epoch)
+
+writer.close()
+
+# View: tensorboard --logdir=runs
+\end{lstlisting}
+
+\clearpage
+\subsubsection{Reproducibility}
+
+\begin{lstlisting}
+import random
+import numpy as np
+import torch
+
+def set_seed(seed=42):
+    """Set all random seeds for reproducibility."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    
+    # Make cudnn deterministic
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+# Call at start of training
+set_seed(42)
+
+# Note: This makes training slower but reproducible
+# For production: set benchmark=True for speed
+\end{lstlisting}
+
+\subsubsection{Checkpointing}
+
+\begin{lstlisting}
+def save_checkpoint(model, optimizer, epoch, loss, path):
+    """Save model checkpoint."""
+    torch.save({
+        'epoch': epoch,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'loss': loss,
+    }, path)
+
+def load_checkpoint(model, optimizer, path):
+    """Load model checkpoint."""
+    checkpoint = torch.load(path)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    epoch = checkpoint['epoch']
+    loss = checkpoint['loss']
+    return epoch, loss
+
+# Save best model
+best_loss = float('inf')
+
+for epoch in range(num_epochs):
+    train_loss = train_epoch()
+    val_loss = validate()
+    
+    # Save if best
+    if val_loss < best_loss:
+        best_loss = val_loss
+        save_checkpoint(model, optimizer, epoch, val_loss, 
+                       'best_model.pth')
+    
+    # Save periodic checkpoints
+    if epoch % 10 == 0:
+        save_checkpoint(model, optimizer, epoch, val_loss,
+                       f'checkpoint_epoch_{epoch}.pth')
+\end{lstlisting}
+
+\subsection{Debugging Checklist}
+
+\textbf{When starting a new project:}
+\begin{enumerate}
+    \item ☐ Can model overfit one batch?
+    \item ☐ Can model overfit small dataset (100 samples)?
+    \item ☐ Are shapes correct at every layer?
+    \item ☐ Is loss function appropriate for task?
+    \item ☐ Is learning rate reasonable? (Try LR finder)
+    \item ☐ Is data normalized?
+    \item ☐ Are you using the right optimizer?
+    \item ☐ Did you set model.train() / model.eval()?
+\end{enumerate}
+
+\textbf{When loss is NaN:}
+\begin{enumerate}
+    \item ☐ Check for NaN in data
+    \item ☐ Reduce learning rate
+    \item ☐ Add gradient clipping
+    \item ☐ Use stable loss functions
+    \item ☐ Check for division by zero
+\end{enumerate}
+
+\textbf{When loss doesn't decrease:}
+\begin{enumerate}
+    \item ☐ Try higher learning rate
+    \item ☐ Check if you're zeroing gradients
+    \item ☐ Verify loss function is correct
+    \item ☐ Check data normalization
+    \item ☐ Verify model has enough capacity
+    \item ☐ Check for dead ReLUs
+\end{enumerate}
+
+\textbf{When overfitting:}
+\begin{enumerate}
+    \item ☐ Add dropout
+    \item ☐ Add weight decay
+    \item ☐ Use data augmentation
+    \item ☐ Reduce model size
+    \item ☐ Get more data
+    \item ☐ Use early stopping
+\end{enumerate}
+
+\clearpage
+\subsection{Key Takeaways}
+
+\textbf{Systematic debugging:}
+\begin{itemize}
+    \item Start simple (overfit one batch)
+    \item Add complexity gradually
+    \item Check shapes at every step
+    \item Visualize gradients and activations
+    \item Use hooks for inspection
+\end{itemize}
+
+\textbf{Common bugs:}
+\begin{itemize}
+    \item NaN loss: LR too high, numerical instability, exploding gradients
+    \item Loss not decreasing: LR too low, wrong loss, forgot zero\_grad, bad data
+    \item Overfitting: Model too complex, no regularization, training too long
+    \item Works on toy data, fails on real: Batch size, distribution shift
+\end{itemize}
+
+\textbf{Best practices:}
+\begin{itemize}
+    \item Separate code into modules (data, models, training)
+    \item Use configuration files
+    \item Track experiments (TensorBoard)
+    \item Set random seeds for reproducibility
+    \item Save checkpoints regularly
+    \item Log everything
+\end{itemize}
+
+\textbf{Development workflow:}
+\begin{enumerate}
+    \item Start with simple baseline
+    \item Verify can overfit small data
+    \item Add regularization
+    \item Scale to full dataset
+    \item Tune hyperparameters
+    \item Validate on held-out test set
+\end{enumerate}
+
+\textbf{Tools for debugging:}
+\begin{itemize}
+    \item Print statements (shapes, values, statistics)
+    \item Hooks (forward and backward)
+    \item TensorBoard (visualize training)
+    \item Gradient visualization
+    \item Learning rate finder
+    \item Activation distribution checks
+\end{itemize}
+
+\textbf{Remember:}
+\begin{itemize}
+    \item Deep learning bugs are often silent (poor performance, not crashes)
+    \item Always start with simplest possible setup
+    \item Check your data first (garbage in = garbage out)
+    \item One change at a time (isolate what works)
+    \item Keep good records (what did you try, what worked)
+\end{itemize}
+
+\clearpage

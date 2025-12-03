@@ -1,0 +1,673 @@
+% =============================================
+% SECTION 3: BUILDING MODELS WITH NN.MODULE
+% =============================================
+
+\section{Building Models with \texttt{nn.Module}}
+
+\subsection{Introduction: Why \texttt{nn.Module}?}
+
+In Section 2, we manually created tensors with \texttt{requires\_grad=True} and computed gradients. While this works for simple cases, real neural networks have hundreds of layers and millions of parameters. We need a way to organize this complexity.
+
+\texttt{nn.Module} is PyTorch's base class for all neural network components. It provides:
+
+\begin{itemize}
+    \item \textbf{Automatic parameter management:} Tracks all learnable parameters
+    \item \textbf{GPU/CPU transfer:} Move entire models between devices with one command
+    \item \textbf{Training/eval modes:} Control behavior of layers like dropout and batch norm
+    \item \textbf{State management:} Save and load model weights
+    \item \textbf{Composability:} Build complex models from simple modules
+\end{itemize}
+
+Every neural network layer (\texttt{nn.Linear}, \texttt{nn.Conv2d}, etc.) and every model you build inherits from \texttt{nn.Module}.
+
+\subsection{Theory: The Module Hierarchy}
+
+A \texttt{nn.Module} is a container that can hold:
+\begin{itemize}
+    \item \textbf{Parameters:} Learnable tensors (weights, biases)
+    \item \textbf{Buffers:} Non-learnable tensors (running statistics, constants)
+    \item \textbf{Sub-modules:} Other \texttt{nn.Module} objects
+\end{itemize}
+
+\textbf{Example hierarchy:}
+
+\begin{verbatim}
+MyModel (nn.Module)
+├── layer1 (nn.Linear)
+│   ├── weight (Parameter)
+│   └── bias (Parameter)
+├── layer2 (nn.Linear)
+│   ├── weight (Parameter)
+│   └── bias (Parameter)
+└── activation (nn.ReLU)
+\end{verbatim}
+
+When you call \texttt{model.parameters()}, PyTorch automatically finds all parameters in the entire tree.
+
+\begin{theorybox}[Key Principle: The Forward Method]
+Every \texttt{nn.Module} must implement a \texttt{forward()} method that defines the computation. You never call \texttt{forward()} directly—instead, you call the module as a function: \texttt{output = model(input)}. This triggers PyTorch's hooks and tracking mechanisms.
+\end{theorybox}
+
+\subsection{Implementation: Creating Your First Module}
+
+\subsubsection{A Simple Linear Model}
+
+Let's build a simple linear regression model from scratch:
+
+\begin{lstlisting}
+import torch
+import torch.nn as nn
+
+class LinearRegression(nn.Module):
+    def __init__(self, input_dim, output_dim):
+        """
+        Initialize the module.
+        Always call super().__init__() first!
+        """
+        super().__init__()  # Initialize parent class
+        
+        # Define learnable parameters
+        self.linear = nn.Linear(input_dim, output_dim)
+    
+    def forward(self, x):
+        """
+        Define the forward pass.
+        x: input tensor of shape (batch_size, input_dim)
+        returns: output tensor of shape (batch_size, output_dim)
+        """
+        return self.linear(x)
+
+# Create the model
+model = LinearRegression(input_dim=10, output_dim=1)
+
+# Use the model
+x = torch.randn(32, 10)  # Batch of 32 samples
+y = model(x)             # Call the model (invokes forward())
+print(y.shape)           # torch.Size([32, 1])
+\end{lstlisting}
+
+\begin{pytorchtip}[Always Call super().\_\_init\_\_()]
+Forgetting \texttt{super().\_\_init\_\_()} is a common mistake. Without it, PyTorch can't track parameters properly. Always put it as the first line of \texttt{\_\_init\_\_()}.
+\end{pytorchtip}
+
+\subsubsection{Accessing Parameters}
+
+\begin{lstlisting}
+model = LinearRegression(10, 1)
+
+# Get all parameters
+for name, param in model.named_parameters():
+    print(f"{name}: {param.shape}")
+# Output:
+# linear.weight: torch.Size([1, 10])
+# linear.bias: torch.Size([1])
+
+# Count parameters
+total_params = sum(p.numel() for p in model.parameters())
+print(f"Total parameters: {total_params}")  # 11 (10 weights + 1 bias)
+
+# Access specific parameters
+print(model.linear.weight)  # The weight matrix
+print(model.linear.bias)    # The bias vector
+\end{lstlisting}
+
+\subsubsection{Using \texttt{nn.Sequential}}
+
+For simple feed-forward architectures, \texttt{nn.Sequential} is convenient:
+
+\begin{lstlisting}
+# Method 1: Pass modules as arguments
+model = nn.Sequential(
+    nn.Linear(10, 50),
+    nn.ReLU(),
+    nn.Linear(50, 20),
+    nn.ReLU(),
+    nn.Linear(20, 1)
+)
+
+# Method 2: Use OrderedDict for named layers
+from collections import OrderedDict
+
+model = nn.Sequential(OrderedDict([
+    ('fc1', nn.Linear(10, 50)),
+    ('relu1', nn.ReLU()),
+    ('fc2', nn.Linear(50, 20)),
+    ('relu2', nn.ReLU()),
+    ('output', nn.Linear(20, 1))
+]))
+
+# Use it
+x = torch.randn(32, 10)
+y = model(x)
+
+# Access layers
+print(model[0])  # First layer (fc1)
+print(model.fc1)  # Same, if using OrderedDict
+\end{lstlisting}
+
+\textbf{When to use Sequential:}
+\begin{itemize}
+    \item Simple feed-forward architecture
+    \item No branching or skip connections
+    \item No custom logic in forward pass
+\end{itemize}
+
+\textbf{When to use custom Module:}
+\begin{itemize}
+    \item Complex architectures (ResNets, U-Nets)
+    \item Multiple inputs/outputs
+    \item Custom forward logic (if statements, loops)
+    \item Need to access intermediate values
+\end{itemize}
+
+\clearpage
+\subsubsection{Custom Modules with Multiple Layers}
+
+\begin{lstlisting}
+class MLP(nn.Module):
+    """Multi-Layer Perceptron with configurable hidden layers."""
+    
+    def __init__(self, input_dim, hidden_dims, output_dim):
+        """
+        Args:
+            input_dim: Input feature dimension
+            hidden_dims: List of hidden layer dimensions
+            output_dim: Output dimension
+        """
+        super().__init__()
+        
+        # Build layers dynamically
+        layers = []
+        prev_dim = input_dim
+        
+        for hidden_dim in hidden_dims:
+            layers.append(nn.Linear(prev_dim, hidden_dim))
+            layers.append(nn.ReLU())
+            prev_dim = hidden_dim
+        
+        # Output layer (no activation)
+        layers.append(nn.Linear(prev_dim, output_dim))
+        
+        # Store as Sequential
+        self.network = nn.Sequential(*layers)
+    
+    def forward(self, x):
+        return self.network(x)
+
+# Create a 3-layer network
+model = MLP(input_dim=10, hidden_dims=[50, 30], output_dim=1)
+
+# The architecture is: 10 -> 50 -> 30 -> 1
+# With ReLU after first two layers
+\end{lstlisting}
+
+\subsubsection{Parameters vs Buffers}
+
+\textbf{Parameters:} Learnable tensors (updated by optimizer)
+
+\textbf{Buffers:} Non-learnable tensors (not updated by optimizer, but saved with model)
+
+\begin{lstlisting}
+class MyModule(nn.Module):
+    def __init__(self):
+        super().__init__()
+        
+        # Learnable parameter
+        self.weight = nn.Parameter(torch.randn(10, 10))
+        
+        # Non-learnable buffer (e.g., running statistics)
+        self.register_buffer('running_mean', torch.zeros(10))
+    
+    def forward(self, x):
+        # Use both in computation
+        return x @ self.weight + self.running_mean
+
+model = MyModule()
+
+# Parameters (will be updated by optimizer)
+print(len(list(model.parameters())))  # 1 (weight only)
+
+# Buffers (won't be updated by optimizer)
+print(len(list(model.buffers())))     # 1 (running_mean)
+
+# Both are saved in state_dict
+print(model.state_dict().keys())
+# dict_keys(['weight', 'running_mean'])
+\end{lstlisting}
+
+\textbf{When to use buffers:}
+\begin{itemize}
+    \item Running statistics in BatchNorm
+    \item Fixed embeddings
+    \item Constants that should be saved with the model
+    \item Anything that needs to move with the model to GPU but shouldn't be trained
+\end{itemize}
+
+\subsubsection{Training vs Evaluation Mode}
+
+Some layers behave differently during training and evaluation:
+
+\begin{lstlisting}
+model = nn.Sequential(
+    nn.Linear(10, 50),
+    nn.ReLU(),
+    nn.Dropout(0.5),  # Randomly drops 50% of values during training
+    nn.Linear(50, 1)
+)
+
+# Training mode (default)
+model.train()
+x = torch.randn(5, 10)
+print(model(x))  # Dropout is active
+
+# Evaluation mode
+model.eval()
+print(model(x))  # Dropout is disabled
+
+# Check current mode
+print(model.training)  # False when in eval mode
+\end{lstlisting}
+
+\begin{warningbox}[Always Set Mode Correctly]
+Forgetting to call \texttt{model.eval()} during inference can lead to incorrect results (dropout still active, batch norm using batch statistics instead of running statistics). Always:
+\begin{lstlisting}
+model.train()  # Before training
+model.eval()   # Before evaluation/inference
+\end{lstlisting}
+\end{warningbox}
+
+\clearpage
+\subsubsection{Moving Models to GPU}
+
+\begin{lstlisting}
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+# Create model
+model = MLP(10, [50, 30], 1)
+
+# Move to GPU
+model = model.to(device)
+
+# All parameters and buffers are now on GPU
+print(next(model.parameters()).device)  # cuda:0
+
+# Input must also be on GPU
+x = torch.randn(32, 10, device=device)
+y = model(x)  # Works! Both model and input on same device
+
+# Moving back to CPU
+model = model.to('cpu')
+\end{lstlisting}
+
+\begin{pytorchtip}[Device Management Pattern]
+Common pattern for device-agnostic code:
+\begin{lstlisting}
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+model = model.to(device)
+
+for batch in dataloader:
+    x, y = batch
+    x, y = x.to(device), y.to(device)
+    output = model(x)
+    # ... rest of training loop
+\end{lstlisting}
+\end{pytorchtip}
+
+\subsubsection{Saving and Loading Models}
+
+\begin{lstlisting}
+# Save model weights
+model = MLP(10, [50, 30], 1)
+torch.save(model.state_dict(), 'model_weights.pth')
+
+# Load weights into new model
+new_model = MLP(10, [50, 30], 1)  # Must have same architecture!
+new_model.load_state_dict(torch.load('model_weights.pth'))
+
+# Save entire model (architecture + weights)
+torch.save(model, 'entire_model.pth')
+loaded_model = torch.load('entire_model.pth')
+
+# For inference, set to eval mode
+loaded_model.eval()
+\end{lstlisting}
+
+\textbf{Best practice:} Save \texttt{state\_dict()} rather than entire model. This is more flexible and portable.
+
+\begin{lstlisting}
+# Better: Save with additional info
+checkpoint = {
+    'model_state_dict': model.state_dict(),
+    'optimizer_state_dict': optimizer.state_dict(),
+    'epoch': epoch,
+    'loss': loss,
+}
+torch.save(checkpoint, 'checkpoint.pth')
+
+# Load
+checkpoint = torch.load('checkpoint.pth')
+model.load_state_dict(checkpoint['model_state_dict'])
+optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+\end{lstlisting}
+
+\subsubsection{Parameter Initialization}
+
+PyTorch layers have default initialization, but you often want custom initialization:
+
+\begin{lstlisting}
+import torch.nn.init as init
+
+class InitializedMLP(nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim):
+        super().__init__()
+        self.fc1 = nn.Linear(input_dim, hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, output_dim)
+        self.relu = nn.ReLU()
+        
+        # Custom initialization
+        self._initialize_weights()
+    
+    def _initialize_weights(self):
+        # Xavier initialization for fc1
+        init.xavier_uniform_(self.fc1.weight)
+        init.zeros_(self.fc1.bias)
+        
+        # He initialization for fc2 (better for ReLU)
+        init.kaiming_normal_(self.fc2.weight, nonlinearity='relu')
+        init.zeros_(self.fc2.bias)
+    
+    def forward(self, x):
+        x = self.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x
+\end{lstlisting}
+
+\textbf{Common initialization strategies:}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\toprule
+\textbf{Method} & \textbf{Use Case} & \textbf{Function} \\
+\midrule
+Xavier/Glorot & Sigmoid/Tanh & \texttt{init.xavier\_uniform\_} \\
+He/Kaiming & ReLU & \texttt{init.kaiming\_normal\_} \\
+Zeros & Biases & \texttt{init.zeros\_} \\
+Constant & Set to specific value & \texttt{init.constant\_} \\
+Normal & Custom std dev & \texttt{init.normal\_} \\
+Orthogonal & RNNs & \texttt{init.orthogonal\_} \\
+\bottomrule
+\end{tabular}
+\caption{Common weight initialization methods}
+\end{table}
+
+\begin{pytorchtip}[Why Initialization Matters]
+Poor initialization can cause:
+\begin{itemize}
+    \item \textbf{Vanishing gradients:} Weights too small, gradients die out
+    \item \textbf{Exploding gradients:} Weights too large, gradients explode
+    \item \textbf{Slow convergence:} Network takes forever to learn
+    \item \textbf{Dead neurons:} ReLUs output zero and never recover
+\end{itemize}
+Use Xavier for sigmoid/tanh activations, He for ReLU activations.
+\end{pytorchtip}
+
+\clearpage
+\subsubsection{Module Hooks for Debugging}
+
+Hooks let you inspect intermediate values during forward/backward pass:
+
+\begin{lstlisting}
+model = nn.Sequential(
+    nn.Linear(10, 50),
+    nn.ReLU(),
+    nn.Linear(50, 1)
+)
+
+# Forward hook: called after forward pass
+def forward_hook(module, input, output):
+    print(f"Forward: {output.shape}")
+
+# Register hook on second layer
+handle = model[2].register_forward_hook(forward_hook)
+
+# Forward pass
+x = torch.randn(5, 10)
+y = model(x)  # Prints: Forward: torch.Size([5, 1])
+
+# Remove hook when done
+handle.remove()
+
+# Backward hook: called during backward pass
+def backward_hook(module, grad_input, grad_output):
+    print(f"Grad output shape: {grad_output[0].shape}")
+
+handle = model[2].register_backward_hook(backward_hook)
+y = model(x)
+y.sum().backward()  # Prints grad shape
+
+handle.remove()
+\end{lstlisting}
+
+\textbf{Use cases for hooks:}
+\begin{itemize}
+    \item Debugging shape mismatches
+    \item Visualizing activations
+    \item Gradient flow analysis
+    \item Feature extraction from intermediate layers
+\end{itemize}
+
+\subsection{Implementation: Practical Patterns}
+
+\subsubsection{Freezing Layers}
+
+Sometimes you want to freeze part of the model (transfer learning):
+
+\begin{lstlisting}
+# Freeze all parameters
+for param in model.parameters():
+    param.requires_grad = False
+
+# Freeze specific layer
+for param in model.layer1.parameters():
+    param.requires_grad = False
+
+# Only train the last layer
+model = nn.Sequential(
+    nn.Linear(10, 50),
+    nn.ReLU(),
+    nn.Linear(50, 1)
+)
+
+# Freeze first two layers
+for param in model[:2].parameters():
+    param.requires_grad = False
+
+# Now only model[2].parameters() will be updated
+optimizer = torch.optim.Adam(
+    filter(lambda p: p.requires_grad, model.parameters()),
+    lr=0.001
+)
+\end{lstlisting}
+
+\subsubsection{Multiple Inputs/Outputs}
+
+\begin{lstlisting}
+class MultiInputModel(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.branch1 = nn.Linear(10, 50)
+        self.branch2 = nn.Linear(5, 50)
+        self.combine = nn.Linear(100, 1)
+    
+    def forward(self, x1, x2):
+        """
+        x1: shape (batch, 10)
+        x2: shape (batch, 5)
+        """
+        out1 = self.branch1(x1)
+        out2 = self.branch2(x2)
+        combined = torch.cat([out1, out2], dim=1)  # (batch, 100)
+        return self.combine(combined)
+
+model = MultiInputModel()
+x1 = torch.randn(32, 10)
+x2 = torch.randn(32, 5)
+y = model(x1, x2)
+\end{lstlisting}
+
+\subsubsection{Custom Layer with Parameters}
+
+\begin{lstlisting}
+class ScaledLinear(nn.Module):
+    """Linear layer with learnable scaling factor."""
+    
+    def __init__(self, in_features, out_features):
+        super().__init__()
+        self.linear = nn.Linear(in_features, out_features)
+        # Custom learnable parameter
+        self.scale = nn.Parameter(torch.ones(1))
+    
+    def forward(self, x):
+        return self.scale * self.linear(x)
+
+layer = ScaledLinear(10, 5)
+
+# Parameters include linear weights/bias AND scale
+for name, param in layer.named_parameters():
+    print(f"{name}: {param.shape}")
+# linear.weight: torch.Size([5, 10])
+# linear.bias: torch.Size([5])
+# scale: torch.Size([1])
+\end{lstlisting}
+
+\clearpage
+\subsection{Exercises}
+
+\begin{exercise}[3.1: Simple Module - $\bigstar\bigstar$]
+\textbf{Goal:} Create your first custom module.
+
+Implement a \texttt{TwoLayerNet} module:
+\begin{enumerate}
+    \item Two linear layers: input\_dim → hidden\_dim → output\_dim
+    \item ReLU activation between them
+    \item No activation after the output layer
+    \item Test with input\_dim=20, hidden\_dim=50, output\_dim=10
+    \item Verify the output shape for a batch of 16 samples
+\end{enumerate}
+
+\textbf{Starter code:}
+\begin{lstlisting}
+import torch
+import torch.nn as nn
+
+class TwoLayerNet(nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim):
+        super().__init__()
+        # Your code here
+    
+    def forward(self, x):
+        # Your code here
+        pass
+
+# Test
+model = TwoLayerNet(20, 50, 10)
+x = torch.randn(16, 20)
+y = model(x)
+print(y.shape)  # Should be torch.Size([16, 10])
+\end{lstlisting}
+\end{exercise}
+
+\begin{exercise}[3.2: Parameter Counting - $\bigstar\bigstar$]
+\textbf{Goal:} Understand model size.
+
+\begin{enumerate}
+    \item Create a model: 100 → 500 → 200 → 50 → 10 (all linear, ReLU between)
+    \item Count total parameters programmatically
+    \item Calculate manually and verify:
+    \begin{itemize}
+        \item Layer 1: $100 \times 500 + 500 = 50{,}500$
+        \item Layer 2: $500 \times 200 + 200 = 100{,}200$
+        \item ... (continue)
+    \end{itemize}
+    \item Print the number of parameters in each layer
+\end{enumerate}
+
+\textbf{Hint:} Use \texttt{param.numel()} to count elements in each parameter.
+\end{exercise}
+
+\begin{exercise}[3.3: Sequential vs Custom - $\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Compare two approaches.
+
+Build the same network two ways:
+\begin{enumerate}
+    \item Using \texttt{nn.Sequential}
+    \item Using a custom \texttt{nn.Module} with explicit layers
+    \item Both should have: 10 → 50 → 30 → 1 with ReLU activations
+    \item Load the same random seed before creating each
+    \item Verify they produce identical outputs for the same input
+\end{enumerate}
+
+\textbf{Challenge:} Can you implement a method to copy weights from one to the other?
+\end{exercise}
+
+\begin{exercise}[3.4: Custom Initialization - $\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Implement custom weight initialization.
+
+\begin{enumerate}
+    \item Create a 3-layer MLP
+    \item Initialize all weights with He initialization
+    \item Initialize all biases to zero
+    \item Create another identical model with default initialization
+    \item Train both on a simple task (e.g., fit $y = x^2$ for x in [-1, 1])
+    \item Compare convergence speed (plot losses)
+\end{enumerate}
+
+\textbf{Hint:} Use \texttt{nn.init.kaiming\_normal\_()} for He initialization.
+\end{exercise}
+
+\begin{exercise}[3.5: Save and Load - $\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Practice model persistence.
+
+\begin{enumerate}
+    \item Create a model and train it for a few steps (any simple task)
+    \item Save the state dict
+    \item Create a new model instance
+    \item Load the weights
+    \item Verify both models produce identical outputs
+    \item Try saving/loading with \texttt{torch.save(model, ...)} and compare
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[3.6: Multi-Input Network - $\bigstar\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Build a more complex architecture.
+
+Implement a model that takes two inputs and combines them:
+\begin{enumerate}
+    \item Input 1: shape (batch, 20)
+    \item Input 2: shape (batch, 10)
+    \item Process each through separate 2-layer networks
+    \item Concatenate the results
+    \item Pass through a final layer to get output shape (batch, 1)
+    \item Test with random inputs
+\end{enumerate}
+
+\textbf{Extra challenge:} Add skip connections (concatenate the original inputs with processed features before the final layer).
+\end{exercise}
+
+\begin{exercise}[3.7: Frozen Layers - $\bigstar\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Practice transfer learning patterns.
+
+\begin{enumerate}
+    \item Create a 4-layer network
+    \item "Pretrain" it on a simple task
+    \item Freeze the first two layers (\texttt{requires\_grad=False})
+    \item "Fine-tune" on a different task (only last two layers train)
+    \item Verify the first two layers' weights don't change
+    \item Compare with training all layers from scratch
+\end{enumerate}
+
+\textbf{Task idea:} First task: classify points in quadrants, second task: classify by distance from origin.
+\end{exercise}
+
+\clearpage

@@ -1,0 +1,643 @@
+% =============================================
+% SECTION 14: TRAINING BEST PRACTICES
+% =============================================
+
+\section{Training Best Practices}
+
+\subsection{Introduction: From Working to Working Well}
+
+You've built a model that trains. Now: how do you make it train \textbf{well}?
+
+This section covers practical strategies for:
+\begin{itemize}
+    \item Choosing hyperparameters
+    \item Learning rate strategies
+    \item Efficient training
+    \item Avoiding common pitfalls
+\end{itemize}
+
+\subsection{Hyperparameter Tuning}
+
+\subsubsection{Which Hyperparameters Matter Most?}
+
+\textbf{Priority order:}
+
+\textbf{1. Learning rate (MOST IMPORTANT)}
+
+Can make 10× difference in performance. Get this right first.
+
+\textbf{2. Batch size}
+
+Affects both training speed and generalization.
+
+\textbf{3. Architecture (width, depth)}
+
+Number of layers and neurons per layer.
+
+\textbf{4. Regularization (dropout, weight decay)}
+
+Prevents overfitting.
+
+\textbf{5. Learning rate schedule}
+
+How LR changes over time.
+
+\textbf{6. Everything else}
+
+Optimizer choice, activation functions, initialization—usually matter less.
+
+\subsubsection{Learning Rate Strategies}
+
+\textbf{Strategy 1: Learning Rate Finder}
+
+Find optimal LR before training:
+
+\begin{lstlisting}
+from torch_lr_finder import LRFinder
+
+model = YourModel()
+optimizer = torch.optim.Adam(model.parameters(), lr=1e-7)
+criterion = nn.CrossEntropyLoss()
+
+lr_finder = LRFinder(model, optimizer, criterion, device="cuda")
+lr_finder.range_test(train_loader, end_lr=10, num_iter=100)
+lr_finder.plot()  # Shows loss vs LR
+
+# Pick LR where loss decreases fastest (steepest slope)
+# Usually 10× smaller than where loss explodes
+optimal_lr = 1e-3  # Read from plot
+
+lr_finder.reset()  # Reset model and optimizer
+\end{lstlisting}
+
+\textbf{Strategy 2: Start Large, Decay}
+
+\begin{lstlisting}
+# Common schedules
+
+# 1. Step decay (reduce every N epochs)
+scheduler = torch.optim.lr_scheduler.StepLR(
+    optimizer, step_size=30, gamma=0.1
+)
+# LR × 0.1 every 30 epochs
+
+# 2. Exponential decay
+scheduler = torch.optim.lr_scheduler.ExponentialLR(
+    optimizer, gamma=0.95
+)
+# LR × 0.95 every epoch
+
+# 3. Cosine annealing (smooth decay)
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+    optimizer, T_max=100, eta_min=1e-6
+)
+# Smooth cosine decay from initial_lr to eta_min over T_max epochs
+
+# 4. Reduce on plateau (adaptive)
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+    optimizer, mode='min', factor=0.5, patience=10
+)
+# Reduce LR by 0.5 if val loss doesn't improve for 10 epochs
+
+# Usage
+for epoch in range(num_epochs):
+    train_loss = train_epoch()
+    val_loss = validate()
+    
+    # For ReduceLROnPlateau, pass validation loss
+    scheduler.step(val_loss)  # or scheduler.step() for others
+\end{lstlisting}
+
+\textbf{Strategy 3: Warmup + Cosine Decay}
+
+State-of-the-art for Transformers:
+
+\begin{lstlisting}
+from torch.optim.lr_scheduler import LambdaLR
+
+def get_cosine_schedule_with_warmup(optimizer, num_warmup_steps, 
+                                    num_training_steps):
+    """Warmup + cosine decay."""
+    
+    def lr_lambda(current_step):
+        # Warmup
+        if current_step < num_warmup_steps:
+            return float(current_step) / float(max(1, num_warmup_steps))
+        
+        # Cosine decay
+        progress = float(current_step - num_warmup_steps) / \
+                  float(max(1, num_training_steps - num_warmup_steps))
+        return max(0.0, 0.5 * (1.0 + math.cos(math.pi * progress)))
+    
+    return LambdaLR(optimizer, lr_lambda)
+
+# Usage
+num_epochs = 100
+steps_per_epoch = len(train_loader)
+num_training_steps = num_epochs * steps_per_epoch
+num_warmup_steps = 5 * steps_per_epoch  # 5 epochs warmup
+
+optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+scheduler = get_cosine_schedule_with_warmup(
+    optimizer, num_warmup_steps, num_training_steps
+)
+
+for epoch in range(num_epochs):
+    for batch in train_loader:
+        # Training step
+        ...
+        optimizer.step()
+        scheduler.step()  # Update LR every step, not epoch!
+\end{lstlisting}
+
+\clearpage
+\subsubsection{Batch Size Selection}
+
+\textbf{Trade-offs:}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\toprule
+\textbf{Batch Size} & \textbf{Pros} & \textbf{Cons} \\
+\midrule
+Small (8-32) & Better generalization & Slower, noisy gradients \\
+             & Less memory & Batch norm unstable \\
+Medium (64-256) & Good balance & Standard choice \\
+Large (512+) & Faster training & Worse generalization \\
+             & More stable & Requires careful tuning \\
+\bottomrule
+\end{tabular}
+\caption{Batch size trade-offs}
+\end{table}
+
+\textbf{Rules of thumb:}
+\begin{itemize}
+    \item \textbf{Start with 32-128:} Usually works well
+    \item \textbf{Larger batches need higher LR:} Scale by $\sqrt{\text{batch size}}$
+    \item \textbf{Use gradient accumulation} if memory limited
+    \item \textbf{Don't go below 8} if using batch norm
+\end{itemize}
+
+\textbf{Linear scaling rule:}
+
+If you double batch size, double learning rate (approximately).
+
+\begin{lstlisting}
+# Base setup
+batch_size = 64
+lr = 0.001
+
+# Double batch size
+batch_size = 128
+lr = 0.002  # Double LR
+
+# But: this is approximate! Always validate on your task
+\end{lstlisting}
+
+\subsubsection{Model Architecture Selection}
+
+\textbf{Width vs Depth:}
+
+\begin{lstlisting}
+# Wider networks (fewer layers, more neurons)
+model_wide = MLP([100, 1024, 1024, 10])  # 2 hidden layers, 1024 neurons
+
+# Deeper networks (more layers, fewer neurons)
+model_deep = MLP([100, 256, 256, 256, 256, 10])  # 4 hidden layers, 256 neurons
+
+# Modern preference: deeper is usually better (with skip connections)
+\end{lstlisting}
+
+\textbf{Start small, scale up:}
+
+\begin{enumerate}
+    \item Start with small model that trains fast
+    \item Check if it underfits (high train loss)
+    \item If underfitting: increase capacity
+    \item If overfitting: add regularization
+\end{enumerate}
+
+\subsection{Regularization Strategies}
+
+\subsubsection{Dropout}
+
+\begin{lstlisting}
+# Standard dropout
+model = nn.Sequential(
+    nn.Linear(100, 256),
+    nn.ReLU(),
+    nn.Dropout(0.5),  # Drop 50% during training
+    nn.Linear(256, 10)
+)
+
+# Guidelines:
+# - Start with 0.5, tune if needed
+# - Higher dropout = more regularization
+# - Use lower dropout (0.1-0.2) for convolutional layers
+# - Higher dropout (0.5-0.7) for large fully connected layers
+\end{lstlisting}
+
+\subsubsection{Weight Decay (L2 Regularization)}
+
+\begin{lstlisting}
+# Add weight decay to optimizer
+optimizer = torch.optim.Adam(
+    model.parameters(),
+    lr=1e-3,
+    weight_decay=1e-4  # L2 penalty
+)
+
+# Typical values: 1e-5 to 1e-3
+# Larger weight decay = stronger regularization
+
+# Note: Use AdamW for better weight decay
+optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, 
+                             weight_decay=1e-4)
+\end{lstlisting}
+
+\subsubsection{Data Augmentation}
+
+\begin{lstlisting}
+# For images
+train_transform = transforms.Compose([
+    transforms.RandomHorizontalFlip(),
+    transforms.RandomCrop(32, padding=4),
+    transforms.ColorJitter(brightness=0.2, contrast=0.2),
+    transforms.RandomRotation(15),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                        std=[0.229, 0.224, 0.225])
+])
+
+# NO augmentation for validation/test
+val_transform = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                        std=[0.229, 0.224, 0.225])
+])
+\end{lstlisting}
+
+\clearpage
+\subsection{Training Monitoring}
+
+\subsubsection{What to Track}
+
+\textbf{Essential metrics:}
+\begin{itemize}
+    \item Training loss (per epoch)
+    \item Validation loss (per epoch)
+    \item Validation accuracy/metric (per epoch)
+    \item Learning rate (per epoch or step)
+\end{itemize}
+
+\textbf{Useful but optional:}
+\begin{itemize}
+    \item Gradient norms
+    \item Weight norms
+    \item Training time per epoch
+    \item GPU memory usage
+\end{itemize}
+
+\begin{lstlisting}
+# Complete training loop with monitoring
+from torch.utils.tensorboard import SummaryWriter
+
+writer = SummaryWriter('runs/experiment')
+
+for epoch in range(num_epochs):
+    # Training
+    model.train()
+    train_loss = 0
+    train_correct = 0
+    train_total = 0
+    
+    for batch in train_loader:
+        optimizer.zero_grad()
+        
+        x, y = batch
+        x, y = x.to(device), y.to(device)
+        
+        output = model(x)
+        loss = criterion(output, y)
+        loss.backward()
+        
+        # Track gradient norm
+        grad_norm = torch.nn.utils.clip_grad_norm_(
+            model.parameters(), max_norm=1.0
+        )
+        
+        optimizer.step()
+        
+        train_loss += loss.item()
+        pred = output.argmax(dim=1)
+        train_correct += (pred == y).sum().item()
+        train_total += y.size(0)
+    
+    # Validation
+    model.eval()
+    val_loss = 0
+    val_correct = 0
+    val_total = 0
+    
+    with torch.no_grad():
+        for batch in val_loader:
+            x, y = batch
+            x, y = x.to(device), y.to(device)
+            
+            output = model(x)
+            loss = criterion(output, y)
+            
+            val_loss += loss.item()
+            pred = output.argmax(dim=1)
+            val_correct += (pred == y).sum().item()
+            val_total += y.size(0)
+    
+    # Compute metrics
+    train_loss /= len(train_loader)
+    train_acc = train_correct / train_total
+    val_loss /= len(val_loader)
+    val_acc = val_correct / val_total
+    
+    # Log to TensorBoard
+    writer.add_scalar('Loss/train', train_loss, epoch)
+    writer.add_scalar('Loss/val', val_loss, epoch)
+    writer.add_scalar('Accuracy/train', train_acc, epoch)
+    writer.add_scalar('Accuracy/val', val_acc, epoch)
+    writer.add_scalar('LR', optimizer.param_groups[0]['lr'], epoch)
+    writer.add_scalar('GradNorm', grad_norm, epoch)
+    
+    # Print
+    print(f"Epoch {epoch}: Train Loss={train_loss:.4f}, "
+          f"Val Loss={val_loss:.4f}, Val Acc={val_acc:.4f}")
+    
+    # Step scheduler
+    scheduler.step()
+
+writer.close()
+\end{lstlisting}
+
+\subsubsection{Recognizing Training Issues from Curves}
+
+\textbf{Healthy training:}
+\begin{verbatim}
+Train loss: Decreasing smoothly
+Val loss: Decreasing, tracking train loss
+Gap: Small (< 10% difference)
+\end{verbatim}
+
+\textbf{Overfitting:}
+\begin{verbatim}
+Train loss: Very low
+Val loss: High and increasing
+Gap: Large and growing
+→ Solution: More regularization, more data
+\end{verbatim}
+
+\textbf{Underfitting:}
+\begin{verbatim}
+Train loss: High
+Val loss: High (similar to train)
+Gap: Small
+→ Solution: Bigger model, train longer
+\end{verbatim}
+
+\textbf{Unstable training:}
+\begin{verbatim}
+Both losses: Oscillating wildly
+→ Solution: Lower learning rate, gradient clipping
+\end{verbatim}
+
+\subsection{Model Selection and Evaluation}
+
+\subsubsection{Proper Train/Val/Test Split}
+
+\begin{lstlisting}
+# WRONG: Tune on test set
+# This gives overly optimistic results!
+
+# RIGHT: Three separate sets
+# 1. Training set (70%): Train model
+# 2. Validation set (15%): Tune hyperparameters
+# 3. Test set (15%): Final evaluation (ONCE!)
+
+from sklearn.model_selection import train_test_split
+
+# Split data
+X_train, X_temp, y_train, y_temp = train_test_split(
+    X, y, test_size=0.3, stratify=y, random_state=42
+)
+X_val, X_test, y_val, y_test = train_test_split(
+    X_temp, y_temp, test_size=0.5, stratify=y_temp, random_state=42
+)
+
+# Training process:
+# 1. Train many models with different hyperparameters
+# 2. Evaluate all on validation set
+# 3. Pick best model
+# 4. Train best model on train+val (optional)
+# 5. Evaluate ONCE on test set
+# 6. Report test performance
+\end{lstlisting}
+
+\subsubsection{Cross-Validation for Small Datasets}
+
+\begin{lstlisting}
+from sklearn.model_selection import KFold
+
+kfold = KFold(n_splits=5, shuffle=True, random_state=42)
+
+scores = []
+
+for fold, (train_idx, val_idx) in enumerate(kfold.split(X)):
+    print(f"Fold {fold + 1}")
+    
+    # Split data
+    X_train, X_val = X[train_idx], X[val_idx]
+    y_train, y_val = y[train_idx], y[val_idx]
+    
+    # Create datasets
+    train_dataset = YourDataset(X_train, y_train)
+    val_dataset = YourDataset(X_val, y_val)
+    
+    # Train model (reset for each fold!)
+    model = YourModel()
+    optimizer = torch.optim.Adam(model.parameters())
+    
+    # Train...
+    val_score = train_and_evaluate(model, train_dataset, val_dataset)
+    scores.append(val_score)
+
+# Report mean and std
+print(f"CV Score: {np.mean(scores):.4f} ± {np.std(scores):.4f}")
+\end{lstlisting}
+
+\clearpage
+\subsection{Practical Tips}
+
+\subsubsection{Start with Good Defaults}
+
+\begin{lstlisting}
+# Proven configuration for most tasks:
+
+optimizer = torch.optim.AdamW(
+    model.parameters(),
+    lr=1e-3,          # Will likely need tuning
+    weight_decay=1e-4,
+    betas=(0.9, 0.999)
+)
+
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+    optimizer, T_max=num_epochs
+)
+
+# Initialization: PyTorch defaults are usually good
+# But for RNNs, use orthogonal init for hidden-to-hidden
+
+# Batch size: 64 or 128
+# Epochs: Start with 100, use early stopping
+# Gradient clipping: max_norm=1.0 (for RNNs)
+\end{lstlisting}
+
+\subsubsection{Hyperparameter Search Strategies}
+
+\textbf{Grid search (exhaustive):}
+\begin{lstlisting}
+lrs = [1e-4, 1e-3, 1e-2]
+weight_decays = [0, 1e-5, 1e-4, 1e-3]
+dropouts = [0.2, 0.5]
+
+best_val_loss = float('inf')
+best_config = None
+
+for lr in lrs:
+    for wd in weight_decays:
+        for dropout in dropouts:
+            val_loss = train_and_evaluate(lr, wd, dropout)
+            
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                best_config = (lr, wd, dropout)
+
+print(f"Best: LR={best_config[0]}, WD={best_config[1]}, "
+      f"Dropout={best_config[2]}")
+\end{lstlisting}
+
+\textbf{Random search (more efficient):}
+\begin{lstlisting}
+import random
+
+def random_config():
+    lr = 10 ** random.uniform(-5, -2)  # 1e-5 to 1e-2
+    wd = 10 ** random.uniform(-6, -3)  # 1e-6 to 1e-3
+    dropout = random.uniform(0.1, 0.7)
+    return lr, wd, dropout
+
+num_trials = 20
+results = []
+
+for trial in range(num_trials):
+    lr, wd, dropout = random_config()
+    val_loss = train_and_evaluate(lr, wd, dropout)
+    results.append((val_loss, lr, wd, dropout))
+
+# Sort by validation loss
+results.sort()
+best = results[0]
+print(f"Best: Val Loss={best[0]:.4f}, LR={best[1]:.2e}, "
+      f"WD={best[2]:.2e}, Dropout={best[3]:.2f}")
+\end{lstlisting}
+
+\textbf{Bayesian optimization (most efficient):}
+\begin{lstlisting}
+# Use libraries like Optuna or Ray Tune
+import optuna
+
+def objective(trial):
+    # Suggest hyperparameters
+    lr = trial.suggest_loguniform('lr', 1e-5, 1e-2)
+    wd = trial.suggest_loguniform('weight_decay', 1e-6, 1e-3)
+    dropout = trial.suggest_uniform('dropout', 0.1, 0.7)
+    
+    # Train and return validation loss
+    val_loss = train_and_evaluate(lr, wd, dropout)
+    return val_loss
+
+# Optimize
+study = optuna.create_study(direction='minimize')
+study.optimize(objective, n_trials=50)
+
+print(f"Best hyperparameters: {study.best_params}")
+print(f"Best validation loss: {study.best_value:.4f}")
+\end{lstlisting}
+
+\subsection{Key Takeaways}
+
+\textbf{Hyperparameter priorities:}
+\begin{enumerate}
+    \item Learning rate (MOST IMPORTANT)
+    \item Batch size
+    \item Architecture (depth, width)
+    \item Regularization (dropout, weight decay)
+    \item Everything else
+\end{enumerate}
+
+\textbf{Learning rate strategies:}
+\begin{itemize}
+    \item Use LR finder to find good starting point
+    \item Start high, decay over time
+    \item Cosine annealing works well
+    \item Warmup helps for Transformers
+    \item ReduceLROnPlateau is safe fallback
+\end{itemize}
+
+\textbf{Batch size selection:}
+\begin{itemize}
+    \item Start with 32-128
+    \item Larger batch = faster but may hurt generalization
+    \item Scale LR with batch size (approximately)
+    \item Use gradient accumulation if memory limited
+\end{itemize}
+
+\textbf{Regularization:}
+\begin{itemize}
+    \item Dropout: 0.5 for FC layers, 0.1-0.2 for conv layers
+    \item Weight decay: 1e-5 to 1e-3
+    \item Data augmentation: Always for images
+    \item Early stopping: Always use
+\end{itemize}
+
+\textbf{Training monitoring:}
+\begin{itemize}
+    \item Track train/val loss and metrics
+    \item Use TensorBoard for visualization
+    \item Watch for overfitting (gap between train/val)
+    \item Watch for underfitting (both losses high)
+\end{itemize}
+
+\textbf{Model selection:}
+\begin{itemize}
+    \item Always use separate test set
+    \item Tune on validation set only
+    \item Test set evaluated ONCE at the end
+    \item Use cross-validation for small datasets
+\end{itemize}
+
+\textbf{Hyperparameter search:}
+\begin{itemize}
+    \item Random search better than grid search
+    \item Bayesian optimization most efficient
+    \item Start with good defaults
+    \item Log everything
+\end{itemize}
+
+\textbf{Common mistakes:}
+\begin{itemize}
+    \item Not tuning learning rate
+    \item Evaluating on test set during development
+    \item Using validation statistics to normalize test data
+    \item Not using early stopping
+    \item Training for too many epochs
+\end{itemize}
+
+\clearpage

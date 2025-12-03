@@ -1,0 +1,1209 @@
+% =============================================
+% SECTION 10: RECURRENT NEURAL NETWORKS (RNNs)
+% =============================================
+
+\section{Recurrent Neural Networks (RNNs)}
+
+\subsection{Introduction: Processing Sequential Data}
+
+So far, we've seen networks that process fixed-size inputs. But many real-world problems involve \textbf{sequences}:
+\begin{itemize}
+    \item Time series (stock prices, sensor data, climate data)
+    \item Text (words, characters, sentences)
+    \item Audio (speech, music)
+    \item Video (frames over time)
+    \item Biological sequences (DNA, proteins)
+\end{itemize}
+
+\textbf{Challenges with sequences:}
+\begin{enumerate}
+    \item Variable length (sentences have different lengths)
+    \item Temporal dependencies (past affects future)
+    \item Need to maintain state (remember what happened before)
+\end{enumerate}
+
+\textbf{Why not use MLPs or CNNs?}
+
+\textbf{MLPs:}
+\begin{itemize}
+    \item Fixed input size (can't handle variable-length sequences)
+    \item No notion of order (position 1 vs position 100 treated same)
+    \item Can't share parameters across time (learn same pattern at different positions)
+\end{itemize}
+
+\textbf{CNNs:}
+\begin{itemize}
+    \item Can handle sequences with 1D convolutions
+    \item Limited temporal context (receptive field)
+    \item No true memory of long-term dependencies
+\end{itemize}
+
+\textbf{RNNs solve these problems} by maintaining a \textbf{hidden state} that gets updated at each time step.
+
+\subsection{Theory: How RNNs Work}
+
+\subsubsection{The Basic RNN}
+
+An RNN processes a sequence one element at a time, maintaining a hidden state:
+
+\textbf{At each time step $t$:}
+\[
+h_t = \tanh(W_{hh} h_{t-1} + W_{xh} x_t + b_h)
+\]
+\[
+y_t = W_{hy} h_t + b_y
+\]
+
+where:
+\begin{itemize}
+    \item $x_t$: Input at time $t$
+    \item $h_t$: Hidden state at time $t$ (memory)
+    \item $y_t$: Output at time $t$
+    \item $W_{hh}$: Hidden-to-hidden weights (memory transformation)
+    \item $W_{xh}$: Input-to-hidden weights
+    \item $W_{hy}$: Hidden-to-output weights
+\end{itemize}
+
+\textbf{Key idea:} The hidden state $h_t$ summarizes information from all previous time steps.
+
+\begin{theorybox}[The Hidden State]
+The hidden state $h_t$ is the RNN's \textbf{memory}:
+\begin{itemize}
+    \item $h_0$: Initial memory (usually zeros)
+    \item $h_1 = f(x_1, h_0)$: Combines first input with initial state
+    \item $h_2 = f(x_2, h_1)$: Combines second input with previous state
+    \item $h_3 = f(x_3, h_2)$: And so on...
+\end{itemize}
+
+By the end: $h_T$ contains information about the entire sequence $x_1, x_2, \ldots, x_T$.
+\end{theorybox}
+
+\textbf{Unrolled view:}
+
+\begin{verbatim}
+x1 → [RNN] → h1 → [RNN] → h2 → [RNN] → h3 → ...
+      ↓            ↓            ↓
+      y1           y2           y3
+\end{verbatim}
+
+All boxes share the \textbf{same weights} (parameter sharing across time).
+
+\clearpage
+\subsubsection{Parameter Sharing}
+
+\textbf{Why parameter sharing matters:}
+
+For a sequence of length 100:
+\begin{itemize}
+    \item MLP: Would need 100 separate weight matrices (millions of parameters)
+    \item RNN: Uses same weights at each step (thousands of parameters)
+\end{itemize}
+
+The network learns patterns that work at \textbf{any position} in the sequence.
+
+\subsubsection{Sequence Modeling Patterns}
+
+\textbf{1. One-to-Many (sequence generation):}
+\begin{verbatim}
+x → [RNN] → [RNN] → [RNN] → ...
+             ↓       ↓       ↓
+             y1      y2      y3
+Example: Image captioning (image → sentence)
+\end{verbatim}
+
+\textbf{2. Many-to-One (sequence classification):}
+\begin{verbatim}
+x1 → [RNN] → x2 → [RNN] → x3 → [RNN]
+                                 ↓
+                                 y
+Example: Sentiment analysis (sentence → positive/negative)
+\end{verbatim}
+
+\textbf{3. Many-to-Many (same length):}
+\begin{verbatim}
+x1 → [RNN] → x2 → [RNN] → x3 → [RNN]
+     ↓           ↓           ↓
+     y1          y2          y3
+Example: Part-of-speech tagging (word → tag)
+\end{verbatim}
+
+\textbf{4. Many-to-Many (different length, encoder-decoder):}
+\begin{verbatim}
+Encoder:  x1 → [RNN] → x2 → [RNN] → h
+Decoder:  h → [RNN] → [RNN] → [RNN]
+               ↓       ↓       ↓
+               y1      y2      y3
+Example: Machine translation (English → French)
+\end{verbatim}
+
+\subsubsection{The Vanishing Gradient Problem}
+
+\textbf{Problem:} Vanilla RNNs struggle with long sequences.
+
+When backpropagating through time, gradients are multiplied by $W_{hh}$ at each step:
+
+\[
+\frac{\partial h_t}{\partial h_0} = \prod_{i=1}^{t} W_{hh} \cdot \text{diag}(\tanh'(h_i))
+\]
+
+If $|W_{hh}| < 1$: Gradients vanish exponentially (network can't learn long-term dependencies)
+
+If $|W_{hh}| > 1$: Gradients explode (training becomes unstable)
+
+\textbf{In practice:} Vanilla RNNs can only remember ~10-20 steps back.
+
+\textbf{Solution:} LSTM and GRU architectures (next sections).
+
+\clearpage
+\subsection{Theory: Long Short-Term Memory (LSTM)}
+
+LSTMs solve the vanishing gradient problem through a clever gating mechanism.
+
+\subsubsection{LSTM Architecture}
+
+LSTM has two states:
+\begin{itemize}
+    \item $h_t$: Hidden state (short-term memory)
+    \item $c_t$: Cell state (long-term memory)
+\end{itemize}
+
+And three gates:
+\begin{itemize}
+    \item $f_t$: Forget gate (what to remove from memory)
+    \item $i_t$: Input gate (what new information to add)
+    \item $o_t$: Output gate (what to output)
+\end{itemize}
+
+\textbf{LSTM Equations:}
+
+\textbf{1. Forget gate (what to forget):}
+\[
+f_t = \sigma(W_f [h_{t-1}, x_t] + b_f)
+\]
+
+\textbf{2. Input gate (what to add):}
+\[
+i_t = \sigma(W_i [h_{t-1}, x_t] + b_i)
+\]
+\[
+\tilde{c}_t = \tanh(W_c [h_{t-1}, x_t] + b_c) \quad \text{(candidate values)}
+\]
+
+\textbf{3. Update cell state:}
+\[
+c_t = f_t \odot c_{t-1} + i_t \odot \tilde{c}_t
+\]
+
+\textbf{4. Output gate (what to output):}
+\[
+o_t = \sigma(W_o [h_{t-1}, x_t] + b_o)
+\]
+\[
+h_t = o_t \odot \tanh(c_t)
+\]
+
+where $\odot$ is element-wise multiplication, $\sigma$ is sigmoid, $[a, b]$ is concatenation.
+
+\begin{theorybox}[LSTM Intuition]
+\textbf{Cell state ($c_t$):} The "memory highway"
+\begin{itemize}
+    \item Runs through the entire sequence
+    \item Modified only by additions and element-wise multiplications
+    \item Gradients flow easily (no repeated matrix multiplications!)
+\end{itemize}
+
+\textbf{Forget gate ($f_t$):} "Should I forget the past?"
+\begin{itemize}
+    \item Values near 0: Forget most of $c_{t-1}$
+    \item Values near 1: Keep most of $c_{t-1}$
+\end{itemize}
+
+\textbf{Input gate ($i_t$):} "Should I add this new information?"
+\begin{itemize}
+    \item Controls how much of $\tilde{c}_t$ to add to memory
+\end{itemize}
+
+\textbf{Output gate ($o_t$):} "How much of memory should I expose?"
+\begin{itemize}
+    \item Controls how much of $c_t$ becomes $h_t$
+\end{itemize}
+\end{theorybox}
+
+\textbf{Why LSTM works:}
+
+The cell state $c_t$ provides a path where gradients can flow without repeated matrix multiplications (just element-wise operations). This solves vanishing gradients!
+
+\clearpage
+\subsection{Theory: Gated Recurrent Unit (GRU)}
+
+GRU is a simplified version of LSTM with fewer parameters.
+
+\subsubsection{GRU Architecture}
+
+GRU combines forget and input gates into a single \textbf{update gate} and merges cell state with hidden state.
+
+\textbf{GRU Equations:}
+
+\textbf{1. Update gate (how much to update):}
+\[
+z_t = \sigma(W_z [h_{t-1}, x_t] + b_z)
+\]
+
+\textbf{2. Reset gate (how much past to forget):}
+\[
+r_t = \sigma(W_r [h_{t-1}, x_t] + b_r)
+\]
+
+\textbf{3. Candidate hidden state:}
+\[
+\tilde{h}_t = \tanh(W_h [r_t \odot h_{t-1}, x_t] + b_h)
+\]
+
+\textbf{4. Update hidden state:}
+\[
+h_t = (1 - z_t) \odot h_{t-1} + z_t \odot \tilde{h}_t
+\]
+
+\textbf{Intuition:}
+\begin{itemize}
+    \item $z_t \approx 0$: Keep old state $h_{t-1}$ (don't update)
+    \item $z_t \approx 1$: Use new candidate $\tilde{h}_t$ (full update)
+    \item $z_t \approx 0.5$: Blend old and new
+\end{itemize}
+
+\textbf{LSTM vs GRU:}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\toprule
+\textbf{Aspect} & \textbf{LSTM} & \textbf{GRU} \\
+\midrule
+Gates & 3 (forget, input, output) & 2 (update, reset) \\
+States & 2 ($h_t$, $c_t$) & 1 ($h_t$) \\
+Parameters & More & Fewer (faster) \\
+Performance & Slightly better & Nearly as good \\
+Training speed & Slower & Faster \\
+Memory & More & Less \\
+\bottomrule
+\end{tabular}
+\caption{LSTM vs GRU comparison}
+\end{table}
+
+\textbf{When to use each:}
+\begin{itemize}
+    \item \textbf{LSTM:} Default choice, especially for complex tasks
+    \item \textbf{GRU:} When speed matters or dataset is smaller
+    \item \textbf{Rule of thumb:} Try both, see which works better
+\end{itemize}
+
+\subsection{Implementation: RNNs in PyTorch}
+
+\subsubsection{Vanilla RNN}
+
+\begin{lstlisting}
+import torch
+import torch.nn as nn
+
+# Simple RNN cell
+rnn_cell = nn.RNNCell(input_size=10, hidden_size=20)
+
+# Input: (batch, input_size)
+# Hidden: (batch, hidden_size)
+x = torch.randn(32, 10)  # Batch of 32
+h = torch.zeros(32, 20)  # Initial hidden state
+
+# One step
+h_next = rnn_cell(x, h)
+print(h_next.shape)  # torch.Size([32, 20])
+
+# Full RNN layer (processes entire sequence)
+rnn = nn.RNN(input_size=10, hidden_size=20, num_layers=1, batch_first=True)
+
+# Input: (batch, seq_len, input_size)
+x = torch.randn(32, 100, 10)  # 32 sequences, length 100
+h0 = torch.zeros(1, 32, 20)   # (num_layers, batch, hidden_size)
+
+# Forward pass
+output, h_n = rnn(x, h0)
+# output: (32, 100, 20) - outputs at each time step
+# h_n: (1, 32, 20) - final hidden state
+
+print(output.shape, h_n.shape)
+\end{lstlisting}
+
+\begin{pytorchtip}[batch\_first Parameter]
+PyTorch RNNs default to shape (seq\_len, batch, features), but this is confusing!
+
+Always use \texttt{batch\_first=True} for shape (batch, seq\_len, features):
+\begin{lstlisting}
+rnn = nn.RNN(..., batch_first=True)  # Recommended
+# Input: (batch, seq_len, features)
+# Output: (batch, seq_len, hidden_size)
+\end{lstlisting}
+\end{pytorchtip}
+
+\clearpage
+\subsubsection{LSTM}
+
+\begin{lstlisting}
+# LSTM cell
+lstm_cell = nn.LSTMCell(input_size=10, hidden_size=20)
+
+x = torch.randn(32, 10)
+h = torch.zeros(32, 20)
+c = torch.zeros(32, 20)  # Cell state
+
+# One step
+h_next, c_next = lstm_cell(x, (h, c))  # Note: tuple of (h, c)
+
+# Full LSTM layer
+lstm = nn.LSTM(input_size=10, hidden_size=20, num_layers=2, 
+               batch_first=True, dropout=0.2)
+
+x = torch.randn(32, 100, 10)
+h0 = torch.zeros(2, 32, 20)  # (num_layers, batch, hidden)
+c0 = torch.zeros(2, 32, 20)  # (num_layers, batch, hidden)
+
+# Forward pass
+output, (h_n, c_n) = lstm(x, (h0, c0))
+# output: (32, 100, 20) - outputs at each time step
+# h_n: (2, 32, 20) - final hidden state for each layer
+# c_n: (2, 32, 20) - final cell state for each layer
+
+print(output.shape, h_n.shape, c_n.shape)
+\end{lstlisting}
+
+\begin{warningbox}[LSTM Hidden State is a Tuple!]
+LSTM returns \texttt{(h, c)} as a tuple, not just \texttt{h}:
+
+\begin{lstlisting}
+# WRONG:
+output, hidden = lstm(x)
+h_n = hidden  # This is a tuple, not a tensor!
+
+# CORRECT:
+output, (h_n, c_n) = lstm(x, (h0, c0))
+# or
+output, hidden = lstm(x, (h0, c0))
+h_n, c_n = hidden
+\end{lstlisting}
+\end{warningbox}
+
+\subsubsection{GRU}
+
+\begin{lstlisting}
+# GRU (similar to LSTM, but only one hidden state)
+gru = nn.GRU(input_size=10, hidden_size=20, num_layers=2, 
+             batch_first=True, dropout=0.2)
+
+x = torch.randn(32, 100, 10)
+h0 = torch.zeros(2, 32, 20)
+
+# Forward pass
+output, h_n = gru(x, h0)  # Only h, no cell state
+# output: (32, 100, 20)
+# h_n: (2, 32, 20)
+
+print(output.shape, h_n.shape)
+\end{lstlisting}
+
+\subsubsection{Building a Sequence Classifier}
+
+\begin{lstlisting}
+class SequenceClassifier(nn.Module):
+    """Many-to-one: sequence → single label."""
+    
+    def __init__(self, input_size, hidden_size, num_classes, num_layers=2):
+        super().__init__()
+        
+        self.lstm = nn.LSTM(
+            input_size=input_size,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            batch_first=True,
+            dropout=0.2 if num_layers > 1 else 0
+        )
+        
+        self.fc = nn.Linear(hidden_size, num_classes)
+    
+    def forward(self, x):
+        # x: (batch, seq_len, input_size)
+        
+        # LSTM forward
+        output, (h_n, c_n) = self.lstm(x)
+        # output: (batch, seq_len, hidden_size)
+        # h_n: (num_layers, batch, hidden_size)
+        
+        # Use last time step's output
+        last_output = output[:, -1, :]  # (batch, hidden_size)
+        
+        # Or use final hidden state from last layer
+        # last_hidden = h_n[-1]  # (batch, hidden_size)
+        
+        # Classify
+        logits = self.fc(last_output)
+        return logits
+
+# Test
+model = SequenceClassifier(input_size=10, hidden_size=64, num_classes=3)
+x = torch.randn(32, 100, 10)  # 32 sequences, length 100
+output = model(x)
+print(output.shape)  # torch.Size([32, 3])
+\end{lstlisting}
+
+\clearpage
+\subsubsection{Sequence-to-Sequence (Many-to-Many)}
+
+\begin{lstlisting}
+class SequenceLabeler(nn.Module):
+    """Many-to-many: each input → each output (same length)."""
+    
+    def __init__(self, input_size, hidden_size, num_classes):
+        super().__init__()
+        
+        self.lstm = nn.LSTM(
+            input_size=input_size,
+            hidden_size=hidden_size,
+            num_layers=2,
+            batch_first=True,
+            dropout=0.2
+        )
+        
+        # Apply classifier at each time step
+        self.fc = nn.Linear(hidden_size, num_classes)
+    
+    def forward(self, x):
+        # x: (batch, seq_len, input_size)
+        
+        output, _ = self.lstm(x)
+        # output: (batch, seq_len, hidden_size)
+        
+        # Apply classifier to all time steps
+        logits = self.fc(output)
+        # logits: (batch, seq_len, num_classes)
+        
+        return logits
+
+# Test
+model = SequenceLabeler(input_size=10, hidden_size=64, num_classes=5)
+x = torch.randn(32, 100, 10)
+output = model(x)
+print(output.shape)  # torch.Size([32, 100, 5])
+\end{lstlisting}
+
+\subsubsection{Bidirectional RNNs}
+
+Process sequence in both directions (forward and backward):
+
+\begin{lstlisting}
+class BidirectionalRNN(nn.Module):
+    """Bidirectional LSTM for sequence classification."""
+    
+    def __init__(self, input_size, hidden_size, num_classes):
+        super().__init__()
+        
+        self.lstm = nn.LSTM(
+            input_size=input_size,
+            hidden_size=hidden_size,
+            num_layers=2,
+            batch_first=True,
+            dropout=0.2,
+            bidirectional=True  # Process both directions
+        )
+        
+        # Hidden size is doubled (forward + backward)
+        self.fc = nn.Linear(hidden_size * 2, num_classes)
+    
+    def forward(self, x):
+        # x: (batch, seq_len, input_size)
+        
+        output, _ = self.lstm(x)
+        # output: (batch, seq_len, hidden_size * 2)
+        
+        # Use last time step (or all for seq-to-seq)
+        last_output = output[:, -1, :]
+        
+        logits = self.fc(last_output)
+        return logits
+
+# Test
+model = BidirectionalRNN(input_size=10, hidden_size=64, num_classes=3)
+x = torch.randn(32, 100, 10)
+output = model(x)
+print(output.shape)  # torch.Size([32, 3])
+\end{lstlisting}
+
+\textbf{When to use bidirectional:}
+\begin{itemize}
+    \item Text classification (can see future context)
+    \item Part-of-speech tagging
+    \item Named entity recognition
+    \item Any task where you have the full sequence before prediction
+\end{itemize}
+
+\textbf{Don't use bidirectional for:}
+\begin{itemize}
+    \item Time series prediction (can't see future!)
+    \item Language generation (need causal/autoregressive)
+    \item Online/streaming applications
+\end{itemize}
+
+\clearpage
+\subsubsection{Handling Variable-Length Sequences}
+
+\begin{lstlisting}
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
+
+class VariableLengthRNN(nn.Module):
+    """Efficiently handle sequences of different lengths."""
+    
+    def __init__(self, input_size, hidden_size, num_classes):
+        super().__init__()
+        self.lstm = nn.LSTM(input_size, hidden_size, batch_first=True)
+        self.fc = nn.Linear(hidden_size, num_classes)
+    
+    def forward(self, x, lengths):
+        """
+        Args:
+            x: Padded sequences (batch, max_len, input_size)
+            lengths: Actual lengths of each sequence
+        """
+        # Pack sequences (skip padding in computation)
+        packed = pack_padded_sequence(x, lengths, batch_first=True, 
+                                     enforce_sorted=False)
+        
+        # LSTM forward on packed sequence
+        packed_output, (h_n, c_n) = self.lstm(packed)
+        
+        # Unpack
+        output, _ = pad_packed_sequence(packed_output, batch_first=True)
+        
+        # Use final hidden state
+        logits = self.fc(h_n[-1])
+        
+        return logits
+
+# Example usage
+# Sequences of different lengths: [50, 30, 40]
+lengths = torch.tensor([50, 30, 40])
+max_len = lengths.max()
+
+# Pad to max length
+x = torch.randn(3, max_len, 10)  # Some values are padding
+
+model = VariableLengthRNN(10, 64, 3)
+output = model(x, lengths)
+print(output.shape)  # torch.Size([3, 3])
+\end{lstlisting}
+
+\textbf{Why pack sequences?}
+\begin{itemize}
+    \item Skip computation on padding (faster)
+    \item More accurate (padding doesn't affect hidden state)
+    \item More memory efficient
+\end{itemize}
+
+\clearpage
+% =============================================
+% SECTION 10: RNNs - PART 2 (Advanced Topics & Exercises)
+% =============================================
+
+\subsubsection{Gradient Clipping (Essential for RNNs)}
+
+RNNs are prone to exploding gradients. Gradient clipping is \textbf{essential}.
+
+\begin{lstlisting}
+# Method 1: Clip by norm (recommended)
+torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
+
+# Method 2: Clip by value
+torch.nn.utils.clip_grad_value_(model.parameters(), clip_value=0.5)
+
+# In training loop
+for epoch in range(num_epochs):
+    for batch in dataloader:
+        optimizer.zero_grad()
+        
+        output = model(batch)
+        loss = criterion(output, target)
+        loss.backward()
+        
+        # Clip gradients AFTER backward, BEFORE step
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
+        
+        optimizer.step()
+\end{lstlisting}
+
+\begin{warningbox}[Always Use Gradient Clipping for RNNs]
+Without gradient clipping:
+\begin{itemize}
+    \item Loss may suddenly spike to NaN
+    \item Training becomes unstable
+    \item Network may never converge
+\end{itemize}
+
+\textbf{Typical values:}
+\begin{itemize}
+    \item \texttt{max\_norm=1.0}: Conservative (very stable)
+    \item \texttt{max\_norm=5.0}: Standard (good default)
+    \item \texttt{max\_norm=10.0}: Aggressive (faster but less stable)
+\end{itemize}
+\end{warningbox}
+
+\subsubsection{Training Tips for RNNs}
+
+\textbf{1. Learning rate}
+\begin{lstlisting}
+# RNNs typically need lower learning rates than CNNs
+optimizer = torch.optim.Adam(model.parameters(), lr=0.001)  # Good start
+
+# Use learning rate scheduling
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+    optimizer, mode='min', factor=0.5, patience=5
+)
+\end{lstlisting}
+
+\textbf{2. Weight initialization}
+\begin{lstlisting}
+def init_lstm_weights(lstm):
+    """Initialize LSTM weights for better convergence."""
+    for name, param in lstm.named_parameters():
+        if 'weight_ih' in name:
+            # Input-hidden weights: Xavier
+            nn.init.xavier_uniform_(param)
+        elif 'weight_hh' in name:
+            # Hidden-hidden weights: Orthogonal (better for RNNs)
+            nn.init.orthogonal_(param)
+        elif 'bias' in name:
+            # Biases: zeros, except forget gate bias = 1
+            nn.init.zeros_(param)
+            # Set forget gate bias to 1 (helps gradient flow)
+            n = param.size(0)
+            param.data[n//4:n//2].fill_(1.0)
+
+# Apply to model
+for name, module in model.named_modules():
+    if isinstance(module, nn.LSTM):
+        init_lstm_weights(module)
+\end{lstlisting}
+
+\textbf{3. Dropout placement}
+\begin{lstlisting}
+# Dropout between layers (built-in)
+lstm = nn.LSTM(input_size, hidden_size, num_layers=3, dropout=0.2)
+# This applies dropout between layers, not within recurrent connections
+
+# For dropout on inputs/outputs:
+class RNNWithDropout(nn.Module):
+    def __init__(self, input_size, hidden_size, num_classes):
+        super().__init__()
+        self.input_dropout = nn.Dropout(0.2)
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers=2)
+        self.output_dropout = nn.Dropout(0.5)
+        self.fc = nn.Linear(hidden_size, num_classes)
+    
+    def forward(self, x):
+        x = self.input_dropout(x)
+        output, _ = self.lstm(x)
+        output = self.output_dropout(output[:, -1, :])
+        return self.fc(output)
+\end{lstlisting}
+
+\textbf{4. Batch size considerations}
+
+RNNs benefit from larger batch sizes:
+\begin{itemize}
+    \item Batch size 32-128 typically good
+    \item Too small (<16): Noisy gradients, unstable training
+    \item Too large (>256): May hurt generalization
+\end{itemize}
+
+\clearpage
+\subsubsection{Common RNN Architectures}
+
+\textbf{Stacked RNNs (Deep RNNs):}
+\begin{lstlisting}
+class DeepLSTM(nn.Module):
+    """Multiple LSTM layers stacked."""
+    
+    def __init__(self, input_size, hidden_size, num_layers, num_classes):
+        super().__init__()
+        
+        # num_layers > 1 creates stacked LSTM
+        self.lstm = nn.LSTM(
+            input_size=input_size,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            batch_first=True,
+            dropout=0.3 if num_layers > 1 else 0  # Dropout between layers
+        )
+        
+        self.fc = nn.Linear(hidden_size, num_classes)
+    
+    def forward(self, x):
+        output, (h_n, c_n) = self.lstm(x)
+        # h_n[-1]: hidden state from the last layer
+        return self.fc(h_n[-1])
+
+# Typical depths: 2-4 layers
+# Deeper than 4 often doesn't help much
+model = DeepLSTM(input_size=10, hidden_size=128, num_layers=3, 
+                 num_classes=10)
+\end{lstlisting}
+
+\textbf{Encoder-Decoder (Seq2Seq):}
+\begin{lstlisting}
+class Seq2Seq(nn.Module):
+    """Encoder-decoder for sequence-to-sequence tasks."""
+    
+    def __init__(self, input_size, hidden_size, output_size):
+        super().__init__()
+        
+        # Encoder: processes input sequence
+        self.encoder = nn.LSTM(input_size, hidden_size, batch_first=True)
+        
+        # Decoder: generates output sequence
+        self.decoder = nn.LSTM(output_size, hidden_size, batch_first=True)
+        
+        # Output projection
+        self.fc = nn.Linear(hidden_size, output_size)
+    
+    def forward(self, src, tgt, teacher_forcing_ratio=0.5):
+        """
+        Args:
+            src: Source sequence (batch, src_len, input_size)
+            tgt: Target sequence (batch, tgt_len, output_size)
+            teacher_forcing_ratio: Probability of using true target vs prediction
+        """
+        batch_size = src.size(0)
+        tgt_len = tgt.size(1)
+        output_size = tgt.size(2)
+        
+        # Encode source
+        _, (h_n, c_n) = self.encoder(src)
+        
+        # Initialize decoder hidden state with encoder final state
+        decoder_hidden = (h_n, c_n)
+        
+        # First decoder input: start token (zeros)
+        decoder_input = torch.zeros(batch_size, 1, output_size).to(src.device)
+        
+        outputs = []
+        
+        # Generate sequence step by step
+        for t in range(tgt_len):
+            # Decode one step
+            decoder_output, decoder_hidden = self.decoder(
+                decoder_input, decoder_hidden
+            )
+            
+            # Project to output space
+            prediction = self.fc(decoder_output)
+            outputs.append(prediction)
+            
+            # Teacher forcing: use true target or prediction?
+            use_teacher_forcing = torch.rand(1).item() < teacher_forcing_ratio
+            
+            if use_teacher_forcing:
+                decoder_input = tgt[:, t:t+1, :]  # Use true target
+            else:
+                decoder_input = prediction  # Use prediction
+        
+        # Stack all outputs
+        outputs = torch.cat(outputs, dim=1)
+        return outputs
+
+# Test
+model = Seq2Seq(input_size=10, hidden_size=64, output_size=10)
+src = torch.randn(32, 20, 10)  # 32 sequences, length 20
+tgt = torch.randn(32, 15, 10)  # Target length 15
+output = model(src, tgt)
+print(output.shape)  # torch.Size([32, 15, 10])
+\end{lstlisting}
+
+\clearpage
+\subsubsection{Time Series Forecasting Example}
+
+\begin{lstlisting}
+class TimeSeriesForecaster(nn.Module):
+    """Predict future values from past observations."""
+    
+    def __init__(self, input_size=1, hidden_size=64, num_layers=2, 
+                 forecast_horizon=10):
+        super().__init__()
+        
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        self.forecast_horizon = forecast_horizon
+        
+        # Encoder LSTM
+        self.lstm = nn.LSTM(
+            input_size=input_size,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            batch_first=True,
+            dropout=0.2 if num_layers > 1 else 0
+        )
+        
+        # Decoder: predict next step
+        self.fc = nn.Linear(hidden_size, input_size)
+    
+    def forward(self, x, future_steps=0):
+        """
+        Args:
+            x: Past observations (batch, seq_len, input_size)
+            future_steps: How many steps to predict into future
+        
+        Returns:
+            predictions: (batch, seq_len + future_steps, input_size)
+        """
+        batch_size = x.size(0)
+        
+        # Process historical data
+        output, (h, c) = self.lstm(x)
+        
+        # Predict on historical data
+        predictions = self.fc(output)
+        
+        # If we need to predict future steps
+        if future_steps > 0:
+            future_preds = []
+            
+            # Use last prediction as next input
+            last_pred = predictions[:, -1:, :]
+            
+            for _ in range(future_steps):
+                # Predict next step
+                output, (h, c) = self.lstm(last_pred, (h, c))
+                pred = self.fc(output)
+                future_preds.append(pred)
+                
+                # Use prediction as next input (autoregressive)
+                last_pred = pred
+            
+            # Concatenate all predictions
+            future_preds = torch.cat(future_preds, dim=1)
+            predictions = torch.cat([predictions, future_preds], dim=1)
+        
+        return predictions
+
+# Example usage
+model = TimeSeriesForecaster(input_size=1, hidden_size=64)
+
+# Historical data: 100 time steps
+x = torch.randn(32, 100, 1)
+
+# Predict on historical + 20 future steps
+predictions = model(x, future_steps=20)
+print(predictions.shape)  # torch.Size([32, 120, 1])
+\end{lstlisting}
+
+\subsection{Exercises}
+
+\begin{exercise}[10.1: Simple Sequence Classification - $\bigstar\bigstar$]
+\textbf{Goal:} Build your first RNN.
+
+\begin{enumerate}
+    \item Generate synthetic sequences: sine waves (class 0) and cosine waves (class 1)
+    \item Each sequence: 50 time steps
+    \item Build an LSTM classifier
+    \item Train for 20 epochs
+    \item Achieve >95\% accuracy
+\end{enumerate}
+
+\textbf{Starter code:}
+\begin{lstlisting}
+import numpy as np
+
+def generate_sine_data(n_samples=1000, seq_len=50):
+    """Generate sine wave sequences."""
+    X = []
+    y = []
+    for _ in range(n_samples):
+        # Random frequency and phase
+        freq = np.random.uniform(0.5, 2.0)
+        phase = np.random.uniform(0, 2*np.pi)
+        t = np.linspace(0, 4*np.pi, seq_len)
+        
+        if np.random.rand() < 0.5:
+            # Sine wave
+            seq = np.sin(freq * t + phase)
+            label = 0
+        else:
+            # Cosine wave
+            seq = np.cos(freq * t + phase)
+            label = 1
+        
+        X.append(seq)
+        y.append(label)
+    
+    return torch.FloatTensor(X).unsqueeze(-1), torch.LongTensor(y)
+
+# Your LSTM classifier here
+\end{lstlisting}
+\end{exercise}
+
+\begin{exercise}[10.2: LSTM vs GRU Comparison - $\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Compare LSTM and GRU empirically.
+
+\begin{enumerate}
+    \item Generate a moderately complex sequence task
+    \item Train identical architectures with:
+    \begin{itemize}
+        \item LSTM (2 layers, 128 hidden)
+        \item GRU (2 layers, 128 hidden)
+        \item Vanilla RNN (2 layers, 128 hidden)
+    \end{itemize}
+    \item Compare:
+    \begin{itemize}
+        \item Training speed (time per epoch)
+        \item Convergence speed (epochs to 90\% accuracy)
+        \item Final accuracy
+        \item Number of parameters
+    \end{itemize}
+\end{enumerate}
+
+\textbf{Expected results:}
+\begin{itemize}
+    \item LSTM and GRU should perform similarly
+    \item GRU should be faster (fewer parameters)
+    \item Vanilla RNN should struggle (vanishing gradients)
+\end{itemize}
+\end{exercise}
+
+\begin{exercise}[10.3: Sequence-to-Sequence Labeling - $\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Many-to-many prediction.
+
+\begin{enumerate}
+    \item Task: Given a noisy sine wave, denoise it at each time step
+    \item Input: sine + Gaussian noise
+    \item Target: clean sine wave
+    \item Build a bidirectional LSTM
+    \item Output prediction at each time step
+    \item Visualize: noisy input vs clean output
+\end{enumerate}
+
+\textbf{Evaluation:}
+\begin{itemize}
+    \item Mean squared error on test set
+    \item Visual inspection of denoised signals
+\end{itemize}
+\end{exercise}
+
+\begin{exercise}[10.4: Variable-Length Sequences - $\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Handle sequences of different lengths efficiently.
+
+\begin{enumerate}
+    \item Generate sequences with random lengths (20-100)
+    \item Implement proper padding and packing:
+    \begin{itemize}
+        \item Pad sequences to same length
+        \item Use \texttt{pack\_padded\_sequence}
+        \item Use \texttt{pad\_packed\_sequence}
+    \end{itemize}
+    \item Train two models:
+    \begin{itemize}
+        \item Without packing (processes padding)
+        \item With packing (skips padding)
+    \end{itemize}
+    \item Compare:
+    \begin{itemize}
+        \item Training time
+        \item Accuracy
+        \item Verify packing gives same results
+    \end{itemize}
+\end{enumerate}
+\end{exercise}
+
+\begin{exercise}[10.5: Time Series Forecasting - $\bigstar\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Predict future values.
+
+\begin{enumerate}
+    \item Use real time series data (or generate complex synthetic data)
+    \item Sliding window approach:
+    \begin{itemize}
+        \item Input: past 50 steps
+        \item Target: next 10 steps
+    \end{itemize}
+    \item Build forecasting model with LSTM
+    \item Implement autoregressive prediction (use predictions as inputs)
+    \item Evaluate:
+    \begin{itemize}
+        \item One-step-ahead prediction
+        \item Multi-step-ahead prediction
+        \item Compare with baseline (simple moving average)
+    \end{itemize}
+    \item Visualize predictions vs ground truth
+\end{enumerate}
+
+\textbf{Metrics:}
+\begin{lstlisting}
+def calculate_metrics(y_true, y_pred):
+    """Calculate forecasting metrics."""
+    mse = torch.mean((y_true - y_pred) ** 2)
+    mae = torch.mean(torch.abs(y_true - y_pred))
+    
+    # MAPE (Mean Absolute Percentage Error)
+    mape = torch.mean(torch.abs((y_true - y_pred) / (y_true + 1e-8))) * 100
+    
+    return {
+        'MSE': mse.item(),
+        'MAE': mae.item(),
+        'MAPE': mape.item()
+    }
+\end{lstlisting}
+\end{exercise}
+
+\begin{exercise}[10.6: Gradient Clipping Investigation - $\bigstar\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Understand why gradient clipping is essential.
+
+\begin{enumerate}
+    \item Train an RNN on a long sequence task (100+ steps)
+    \item Train multiple times with different settings:
+    \begin{itemize}
+        \item No gradient clipping
+        \item \texttt{max\_norm=1.0}
+        \item \texttt{max\_norm=5.0}
+        \item \texttt{max\_norm=10.0}
+    \end{itemize}
+    \item Monitor and plot:
+    \begin{itemize}
+        \item Gradient norms over time
+        \item Loss curves
+        \item Percentage of batches where gradients are clipped
+    \end{itemize}
+    \item Observe:
+    \begin{itemize}
+        \item Without clipping: loss spikes, NaN values
+        \item With clipping: stable training
+    \end{itemize}
+\end{enumerate}
+
+\textbf{Visualization code:}
+\begin{lstlisting}
+def track_gradient_norms(model):
+    """Track gradient norms during training."""
+    total_norm = 0
+    for p in model.parameters():
+        if p.grad is not None:
+            param_norm = p.grad.data.norm(2)
+            total_norm += param_norm.item() ** 2
+    total_norm = total_norm ** 0.5
+    return total_norm
+
+# In training loop
+gradient_norms = []
+for epoch in range(num_epochs):
+    for batch in dataloader:
+        optimizer.zero_grad()
+        loss = ...
+        loss.backward()
+        
+        # Track before clipping
+        norm_before = track_gradient_norms(model)
+        gradient_norms.append(norm_before)
+        
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
+        optimizer.step()
+
+# Plot
+plt.plot(gradient_norms)
+plt.axhline(y=5.0, color='r', linestyle='--', label='Clip threshold')
+plt.xlabel('Step')
+plt.ylabel('Gradient Norm')
+plt.legend()
+plt.show()
+\end{lstlisting}
+\end{exercise}
+
+\clearpage
+\subsection{Key Takeaways}
+
+\textbf{When to use RNNs:}
+\begin{itemize}
+    \item Sequential data with temporal dependencies
+    \item Variable-length sequences
+    \item Time series forecasting
+    \item Text processing (though Transformers now dominate)
+    \item When order matters
+\end{itemize}
+
+\textbf{Architecture choices:}
+\begin{itemize}
+    \item \textbf{Vanilla RNN:} Almost never use (vanishing gradients)
+    \item \textbf{LSTM:} Default choice, especially for complex tasks
+    \item \textbf{GRU:} When speed matters or dataset is smaller
+    \item \textbf{Bidirectional:} When you have full sequence (not streaming)
+    \item \textbf{Stacked (2-4 layers):} For complex patterns
+\end{itemize}
+
+\textbf{Essential training practices:}
+\begin{itemize}
+    \item \textbf{Always use gradient clipping} (max\_norm=5.0 is good default)
+    \item Initialize forget gate bias to 1 (helps gradient flow)
+    \item Use orthogonal initialization for hidden-to-hidden weights
+    \item Lower learning rates than CNNs (0.001 typical)
+    \item Larger batch sizes (32-128)
+    \item Pack sequences when lengths vary (efficiency)
+\end{itemize}
+
+\textbf{Common patterns:}
+\begin{itemize}
+    \item \textbf{Many-to-one:} Classification (use last hidden state)
+    \item \textbf{Many-to-many (same length):} Sequence labeling (output at each step)
+    \item \textbf{Many-to-many (different length):} Seq2seq with encoder-decoder
+    \item \textbf{One-to-many:} Generation (feed output back as input)
+\end{itemize}
+
+\textbf{Why LSTMs work better than vanilla RNNs:}
+\begin{itemize}
+    \item Cell state provides gradient highway (no repeated matrix multiplications)
+    \item Gates control information flow (selective memory)
+    \item Can learn dependencies over 100+ steps
+    \item Forget gate prevents exploding activations
+\end{itemize}
+
+\textbf{Limitations of RNNs:}
+\begin{itemize}
+    \item Sequential processing (slow, can't parallelize)
+    \item Still struggle with very long sequences (>1000 steps)
+    \item Transformers now preferred for many NLP tasks
+    \item Require careful tuning (gradient clipping, learning rate)
+\end{itemize}
+
+\textbf{Practical tips:}
+\begin{itemize}
+    \item Start with 2-layer LSTM, hidden size = 128 or 256
+    \item Use \texttt{batch\_first=True} always
+    \item Remember LSTM returns \texttt{(h, c)} tuple
+    \item Dropout between layers (0.2-0.3), higher on outputs (0.5)
+    \item Monitor gradient norms (should be <10)
+    \item Use early stopping (RNNs prone to overfitting)
+\end{itemize}
+
+\textbf{Debugging checklist:}
+\begin{itemize}
+    \item Loss explodes? → Add/increase gradient clipping
+    \item Loss stuck? → Check learning rate, try lower
+    \item Poor performance? → Try LSTM instead of GRU, add layers
+    \item Slow training? → Use packing for variable lengths
+    \item Different train/test? → Check dropout mode
+\end{itemize}
+
+\textbf{Modern alternatives:}
+\begin{itemize}
+    \item \textbf{Transformers:} Better for most NLP tasks (parallelizable)
+    \item \textbf{Temporal CNNs:} Good for some time series (efficient)
+    \item \textbf{State space models:} Emerging alternative (S4, Mamba)
+\end{itemize}
+
+However, RNNs still useful for:
+\begin{itemize}
+    \item Online/streaming applications (Transformers need full context)
+    \item Very long sequences where Transformers too expensive
+    \item Small datasets (fewer parameters than Transformers)
+    \item Scientific time series (physics-informed RNNs)
+\end{itemize}
+
+\clearpage

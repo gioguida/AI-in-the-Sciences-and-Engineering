@@ -1,0 +1,449 @@
+% =============================================
+% SECTION 1: THE TORCH.TENSOR
+% =============================================
+
+\section{The \texttt{torch.Tensor}}
+
+\subsection{Introduction: Why Tensors?}
+
+Everything in PyTorch—from your input data (images, time series, simulation meshes) to the parameters of your neural network (weights and biases)—is represented as a \textbf{tensor}.
+
+If you've used NumPy, you already know the core idea: a tensor is essentially a multi-dimensional array (like \texttt{ndarray}). So why use PyTorch instead of NumPy?
+
+\textbf{Two critical reasons:}
+
+\begin{enumerate}
+    \item \textbf{GPU Acceleration:} PyTorch tensors can be moved to GPUs with a single command, enabling massive parallelization. For deep learning and large-scale scientific computing, this isn't optional—it's essential.
+    
+    \item \textbf{Automatic Differentiation:} PyTorch can automatically compute gradients of any output with respect to any input. This \texttt{autograd} system is the engine that makes deep learning possible. We'll explore this in detail in Section 2.
+\end{enumerate}
+
+\subsection{Theory: Tensor Fundamentals}
+
+\begin{definition}[Tensor]
+A \textbf{tensor} is a multi-dimensional array of numerical values. It generalizes:
+\begin{itemize}
+    \item \textbf{Scalar} (0D tensor): a single number
+    \item \textbf{Vector} (1D tensor): an array of numbers
+    \item \textbf{Matrix} (2D tensor): a 2D grid of numbers
+    \item \textbf{Higher-dimensional tensors}: 3D, 4D, ... arrays
+\end{itemize}
+\end{definition}
+
+\textbf{Key Properties:}
+
+\begin{itemize}
+    \item \textbf{Shape:} The dimensions of the tensor, e.g., \pythoninline{(3, 4, 5)} means 3×4×5
+    \item \textbf{Dtype:} The data type (e.g., \texttt{float32}, \texttt{int64}, \texttt{bool})
+    \item \textbf{Device:} Where the tensor lives (\texttt{cpu} or \texttt{cuda:0}, \texttt{cuda:1}, etc.)
+    \item \textbf{Requires\_grad:} Whether to track operations for automatic differentiation
+\end{itemize}
+
+\textbf{Common Tensor Shapes in Deep Learning:}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{ll}
+\toprule
+\textbf{Shape} & \textbf{Typical Use} \\
+\midrule
+\texttt{(N,)} & Vector of N values \\
+\texttt{(N, D)} & Batch of N samples, D features each \\
+\texttt{(N, C, H, W)} & Batch of N images: C channels, H×W pixels \\
+\texttt{(N, L, D)} & Batch of N sequences, length L, D features \\
+\texttt{(N, C, D, H, W)} & Batch of N 3D volumes \\
+\bottomrule
+\end{tabular}
+\caption{Common tensor shapes. N=batch size, C=channels, H/W=height/width, L=sequence length, D=feature dimension}
+\end{table}
+
+\subsection{Implementation: Creating and Manipulating Tensors}
+
+\subsubsection{Creating Tensors}
+
+\begin{lstlisting}
+import torch
+
+# From Python lists
+x = torch.tensor([1, 2, 3])
+print(x)  # tensor([1, 2, 3])
+
+# Specify dtype
+x = torch.tensor([1.0, 2.0, 3.0], dtype=torch.float32)
+print(x.dtype)  # torch.float32
+
+# Common initialization functions
+zeros = torch.zeros(2, 3)           # 2x3 matrix of zeros
+ones = torch.ones(2, 3)             # 2x3 matrix of ones
+random = torch.randn(2, 3)          # Random normal distribution
+uniform = torch.rand(2, 3)          # Uniform distribution [0, 1)
+arange = torch.arange(0, 10, 2)     # [0, 2, 4, 6, 8]
+linspace = torch.linspace(0, 1, 5)  # [0.0, 0.25, 0.5, 0.75, 1.0]
+
+# Like existing tensor (same shape/dtype)
+x = torch.ones(3, 4)
+y = torch.zeros_like(x)  # Same shape as x
+z = torch.randn_like(x)  # Same shape, random values
+\end{lstlisting}
+
+\begin{pytorchtip}[Default Dtype]
+PyTorch's default floating point dtype is \texttt{torch.float32}. For most deep learning, this is fine. You can change it globally with:
+\begin{lstlisting}
+torch.set_default_dtype(torch.float64)  # More precision
+\end{lstlisting}
+However, \texttt{float32} is usually the sweet spot: enough precision, less memory, faster on GPUs.
+\end{pytorchtip}
+
+\clearpage
+\subsubsection{Tensor Properties}
+
+\begin{lstlisting}
+x = torch.randn(2, 3, 4)
+
+print(x.shape)        # torch.Size([2, 3, 4])
+print(x.size())       # Same as .shape
+print(x.ndim)         # 3 (number of dimensions)
+print(x.numel())      # 24 (total number of elements)
+print(x.dtype)        # torch.float32
+print(x.device)       # cpu
+
+# Check if tensor requires gradients
+print(x.requires_grad)  # False by default
+\end{lstlisting}
+
+\subsubsection{Indexing and Slicing}
+
+PyTorch indexing works like NumPy:
+
+\begin{lstlisting}
+x = torch.arange(12).reshape(3, 4)
+# tensor([[ 0,  1,  2,  3],
+#         [ 4,  5,  6,  7],
+#         [ 8,  9, 10, 11]])
+
+# Basic indexing
+print(x[0])       # First row: tensor([0, 1, 2, 3])
+print(x[:, 0])    # First column: tensor([0, 4, 8])
+print(x[1, 2])    # Element at (1, 2): tensor(6)
+
+# Slicing
+print(x[:2, :2])  # Top-left 2x2:
+# tensor([[0, 1],
+#         [4, 5]])
+
+# Advanced indexing
+indices = torch.tensor([0, 2])
+print(x[indices])  # Rows 0 and 2
+
+# Boolean masking
+mask = x > 5
+print(x[mask])    # tensor([ 6,  7,  8,  9, 10, 11])
+\end{lstlisting}
+
+\begin{warningbox}[Views vs Copies]
+Slicing creates a \textbf{view}, not a copy! Modifying a view changes the original:
+\begin{lstlisting}
+x = torch.ones(3, 3)
+y = x[0]      # View of first row
+y[0] = 999    # Modifies x!
+print(x)      # First element is now 999
+
+# To create a copy:
+y = x[0].clone()
+\end{lstlisting}
+\end{warningbox}
+
+\subsubsection{Shape Manipulation}
+
+\begin{lstlisting}
+x = torch.arange(12)
+
+# Reshape (must have same total elements)
+y = x.reshape(3, 4)
+z = x.view(2, 6)      # Similar to reshape
+w = x.reshape(3, -1)  # -1 means "infer this dimension" -> (3, 4)
+
+# Transpose
+x = torch.randn(2, 3)
+y = x.T               # Shape: (3, 2)
+z = x.transpose(0, 1) # Same as .T
+
+# Permute (generalized transpose)
+x = torch.randn(2, 3, 4)
+y = x.permute(2, 0, 1)  # Shape: (4, 2, 3)
+
+# Flatten
+x = torch.randn(2, 3, 4)
+y = x.flatten()          # Shape: (24,)
+z = x.flatten(1)         # Flatten from dim 1: (2, 12)
+
+# Squeeze and unsqueeze (remove/add dimensions of size 1)
+x = torch.randn(2, 1, 3, 1)
+y = x.squeeze()          # Shape: (2, 3)
+z = x.squeeze(1)         # Remove dim 1: (2, 3, 1)
+
+x = torch.randn(2, 3)
+y = x.unsqueeze(0)       # Shape: (1, 2, 3)
+z = x.unsqueeze(-1)      # Shape: (2, 3, 1)
+\end{lstlisting}
+
+\begin{pytorchtip}[Understanding Dimensions]
+\begin{itemize}
+    \item Dimension indices start at 0
+    \item Negative indices count from the end: -1 is the last dimension
+    \item \pythoninline{unsqueeze(1)} adds a dimension at position 1
+    \item \pythoninline{squeeze()} removes ALL dimensions of size 1
+\end{itemize}
+\end{pytorchtip}
+
+\clearpage
+\subsubsection{Broadcasting}
+
+Broadcasting is one of the most powerful—and confusing—features. It allows operations between tensors of different shapes.
+
+\textbf{Broadcasting Rules:}
+\begin{enumerate}
+    \item If tensors have different number of dimensions, prepend 1s to the smaller one
+    \item Dimensions are compatible if they're equal or one of them is 1
+    \item The result shape is the maximum along each dimension
+\end{enumerate}
+
+\begin{lstlisting}
+# Example 1: Vector + Scalar
+x = torch.tensor([1, 2, 3])  # Shape: (3,)
+y = 10                        # Shape: () - scalar
+z = x + y                     # Shape: (3,) - broadcasts scalar to (3,)
+# Result: tensor([11, 12, 13])
+
+# Example 2: Matrix + Vector (row-wise)
+x = torch.ones(3, 4)          # Shape: (3, 4)
+y = torch.tensor([1, 2, 3, 4])  # Shape: (4,)
+z = x + y                     # y broadcasts to (1, 4) then (3, 4)
+# Each row of x has y added to it
+
+# Example 3: Matrix + Column Vector
+x = torch.ones(3, 4)          # Shape: (3, 4)
+y = torch.tensor([[1], [2], [3]])  # Shape: (3, 1)
+z = x + y                     # y broadcasts to (3, 4)
+# Each column of x has corresponding y value added
+
+# Example 4: Batch operations
+x = torch.randn(10, 3, 4)     # 10 matrices of size 3x4
+y = torch.randn(3, 4)         # Single matrix
+z = x + y                     # y broadcasts to (10, 3, 4)
+# Same matrix y added to all 10 matrices in x
+\end{lstlisting}
+
+\begin{warningbox}[Common Broadcasting Mistake]
+\begin{lstlisting}
+# Trying to add vectors of different sizes
+x = torch.ones(3)     # Shape: (3,)
+y = torch.ones(4)     # Shape: (4,)
+z = x + y             # ERROR! Shapes don't match
+
+# Need to explicitly reshape:
+x = x.unsqueeze(1)    # Shape: (3, 1)
+y = y.unsqueeze(0)    # Shape: (1, 4)
+z = x + y             # Shape: (3, 4) - outer sum
+\end{lstlisting}
+\end{warningbox}
+
+\subsubsection{Mathematical Operations}
+
+\begin{lstlisting}
+x = torch.tensor([1.0, 2.0, 3.0])
+y = torch.tensor([4.0, 5.0, 6.0])
+
+# Element-wise operations
+z = x + y          # Addition
+z = x - y          # Subtraction
+z = x * y          # Multiplication
+z = x / y          # Division
+z = x ** 2         # Power
+z = torch.sqrt(x)  # Square root
+z = torch.exp(x)   # Exponential
+z = torch.log(x)   # Natural log
+
+# In-place operations (modify the tensor)
+x.add_(5)          # Add 5 to x in-place
+x.mul_(2)          # Multiply x by 2 in-place
+
+# Matrix operations
+A = torch.randn(3, 4)
+B = torch.randn(4, 5)
+C = torch.mm(A, B)           # Matrix multiply: (3, 5)
+C = torch.matmul(A, B)       # Same, but works for batches too
+C = A @ B                    # Python 3.5+ operator
+
+# Batch matrix multiply
+A = torch.randn(10, 3, 4)    # 10 matrices of size 3x4
+B = torch.randn(10, 4, 5)    # 10 matrices of size 4x5
+C = torch.bmm(A, B)          # Shape: (10, 3, 5)
+
+# Reduction operations
+x = torch.randn(3, 4)
+mean = x.mean()              # Scalar: mean of all elements
+std = x.std()                # Standard deviation
+sum_all = x.sum()            # Sum of all elements
+sum_dim0 = x.sum(dim=0)      # Sum along dimension 0: (4,)
+sum_dim1 = x.sum(dim=1)      # Sum along dimension 1: (3,)
+max_val, max_idx = x.max(dim=1)  # Max value and index per row
+\end{lstlisting}
+
+\begin{pytorchtip}[Dimension Conventions]
+When reducing along a dimension:
+\begin{itemize}
+    \item \pythoninline{dim=0}: Operate across rows (result has fewer rows)
+    \item \pythoninline{dim=1}: Operate across columns (result has fewer columns)
+    \item \pythoninline{dim=-1}: Last dimension (most common for sequences)
+    \item \pythoninline{keepdim=True}: Keep the dimension (size 1) in result
+\end{itemize}
+\end{pytorchtip}
+
+\clearpage
+\subsubsection{Moving Tensors Between Devices}
+
+\begin{lstlisting}
+# Check if CUDA is available
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+    print(f"Using GPU: {torch.cuda.get_device_name(0)}")
+else:
+    device = torch.device("cpu")
+    print("Using CPU")
+
+# Create tensor on CPU
+x = torch.randn(1000, 1000)
+
+# Move to GPU
+x_gpu = x.to(device)
+# Or:
+x_gpu = x.cuda()  # Shorthand for .to('cuda')
+
+# Move back to CPU
+x_cpu = x_gpu.to('cpu')
+# Or:
+x_cpu = x_gpu.cpu()
+
+# Operations must be on same device
+y_gpu = torch.randn(1000, 1000, device=device)  # Create directly on GPU
+z = x_gpu + y_gpu  # OK: both on GPU
+
+# This would ERROR:
+# z = x_cpu + y_gpu  # ERROR! Different devices
+\end{lstlisting}
+
+\begin{warningbox}[Device Mismatch]
+One of the most common errors:
+\begin{lstlisting}
+RuntimeError: Expected all tensors to be on the same device
+\end{lstlisting}
+Always ensure tensors are on the same device before operations! Use \pythoninline{.to(device)} consistently.
+\end{warningbox}
+
+\subsection{Exercises}
+
+\begin{exercise}[1.1: Tensor Creation - $\bigstar\bigstar$]
+\textbf{Goal:} Get comfortable creating tensors in different ways.
+
+\begin{enumerate}
+    \item Create a tensor of shape (5, 3) filled with random values from a standard normal distribution
+    \item Create a tensor of shape (4, 4) filled with values from 0 to 15 (use \texttt{arange} and \texttt{reshape})
+    \item Create a tensor of shape (10,) with evenly spaced values from 0 to 1
+    \item Create a (3, 3) identity matrix (hint: \texttt{torch.eye})
+\end{enumerate}
+
+\textbf{Starter code:}
+\begin{lstlisting}
+import torch
+
+# Your code here
+x1 = ...
+x2 = ...
+x3 = ...
+x4 = ...
+
+print(x1.shape, x2.shape, x3.shape, x4.shape)
+\end{lstlisting}
+\end{exercise}
+
+\begin{exercise}[1.2: Shape Manipulation - $\bigstar\bigstar$]
+\textbf{Goal:} Master reshaping and dimension manipulation.
+
+Given \pythoninline{x = torch.arange(24)}:
+\begin{enumerate}
+    \item Reshape x to (2, 3, 4)
+    \item Transpose the last two dimensions to get (2, 4, 3)
+    \item Flatten the result to 1D
+    \item Create a view with an extra dimension at position 0 to get (1, 24)
+\end{enumerate}
+
+\textbf{Hint:} Use \texttt{reshape}, \texttt{transpose}, \texttt{flatten}, \texttt{unsqueeze}.
+\end{exercise}
+
+\begin{exercise}[1.3: Broadcasting Mastery - $\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Understand broadcasting and avoid common mistakes.
+
+\begin{enumerate}
+    \item Create matrix A of shape (5, 1) with values [1, 2, 3, 4, 5]
+    \item Create vector b of shape (3,) with values [10, 20, 30]
+    \item Compute C = A + b using broadcasting. What is the shape of C?
+    \item Compute the outer product of two vectors u (size 4) and v (size 3) without loops (result should be 4×3)
+    \item Given batch of images (16, 3, 32, 32) and per-channel mean (3,), subtract the mean from each image
+\end{enumerate}
+
+\textbf{Debugging tip:} If broadcasting fails, print the shapes! Use \pythoninline{print(A.shape, b.shape)}.
+\end{exercise}
+
+\begin{exercise}[1.4: Advanced Indexing - $\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Learn advanced indexing techniques.
+
+Given \pythoninline{x = torch.randn(100, 5)}:
+\begin{enumerate}
+    \item Select all rows where the first column is positive
+    \item Get the maximum value in each row and its index
+    \item Create a new tensor with only the even-indexed rows (0, 2, 4, ...)
+    \item Replace all negative values with 0 (use boolean indexing)
+\end{enumerate}
+
+\textbf{Hint:} Use boolean masks: \pythoninline{mask = x[:, 0] > 0}, then \pythoninline{x[mask]}.
+\end{exercise}
+
+\begin{exercise}[1.5: Implementing Distance Matrix - $\bigstar\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Use broadcasting for efficient computation.
+
+Given a set of points \pythoninline{X} of shape (N, D) where N=100 points in D=2 dimensions:
+\begin{enumerate}
+    \item Compute the pairwise Euclidean distance matrix (N×N) \textbf{without loops}
+    \item The (i, j) entry should be $\|x_i - x_j\|_2$
+    \item Verify the diagonal is all zeros
+    \item Find the nearest neighbor for each point (excluding itself)
+\end{enumerate}
+
+\textbf{Hint:} Expand dimensions: \pythoninline{X_i = X.unsqueeze(1)} (shape N, 1, D) and \pythoninline{X_j = X.unsqueeze(0)} (shape 1, N, D). Then compute \pythoninline{(X_i - X_j)**2}.
+\end{exercise}
+
+\begin{exercise}[1.6: GPU Operations - $\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Practice moving tensors between devices.
+
+\begin{enumerate}
+    \item Check if CUDA is available on your system
+    \item Create a large tensor (1000×1000) on CPU
+    \item Move it to GPU (if available) and time a matrix multiplication
+    \item Compare the time with the same operation on CPU
+    \item Handle the case where GPU is not available gracefully
+\end{enumerate}
+
+\textbf{Starter code:}
+\begin{lstlisting}
+import torch
+import time
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
+
+# Your code here
+\end{lstlisting}
+\end{exercise}
+
+\clearpage

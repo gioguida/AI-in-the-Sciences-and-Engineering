@@ -1,0 +1,948 @@
+% =============================================
+% SECTION 8: RESIDUAL NETWORKS & SKIP CONNECTIONS
+% =============================================
+
+\section{Residual Networks \& Skip Connections}
+
+\subsection{Introduction: The Deep Network Problem}
+
+In the early 2010s, researchers discovered something puzzling: making networks deeper didn't always make them better. Sometimes, a 56-layer network performed \textbf{worse} than a 20-layer network—even on training data!
+
+This wasn't overfitting (test loss was also worse). It was a fundamental optimization problem.
+
+\textbf{The Degradation Problem:}
+\begin{itemize}
+    \item Very deep networks are harder to optimize
+    \item Gradients vanish or explode
+    \item Training error increases with depth (counterintuitively)
+    \item Not caused by overfitting—happens on training set too
+\end{itemize}
+
+\textbf{Residual Networks (ResNets) solved this in 2015,} enabling networks with 100+ layers that actually train better than shallow ones. The key insight: \textbf{skip connections} (also called \textbf{residual connections}).
+
+\textbf{Impact:}
+\begin{itemize}
+    \item ResNet-152 won ImageNet 2015 (3.57\% error, human-level performance)
+    \item Now standard in almost all vision architectures
+    \item Fundamental principle used across all deep learning (Transformers, etc.)
+\end{itemize}
+
+\subsection{Theory: Why Skip Connections Work}
+
+\subsubsection{The Problem: Vanishing Gradients}
+
+In a deep network without skip connections:
+
+\[
+\mathbf{x}_L = f_L(f_{L-1}(...f_2(f_1(\mathbf{x}_0))))
+\]
+
+During backpropagation, gradients multiply through the chain rule:
+
+\[
+\frac{\partial \mathcal{L}}{\partial \mathbf{x}_0} = \frac{\partial \mathcal{L}}{\partial \mathbf{x}_L} \cdot \frac{\partial \mathbf{x}_L}{\partial \mathbf{x}_{L-1}} \cdot ... \cdot \frac{\partial \mathbf{x}_2}{\partial \mathbf{x}_1} \cdot \frac{\partial \mathbf{x}_1}{\partial \mathbf{x}_0}
+\]
+
+If each term is less than 1, the gradient \textbf{vanishes} exponentially as it propagates backward.
+
+\textbf{Example:} If each layer multiplies gradient by 0.9:
+\begin{itemize}
+    \item After 10 layers: $0.9^{10} \approx 0.35$
+    \item After 20 layers: $0.9^{20} \approx 0.12$
+    \item After 50 layers: $0.9^{50} \approx 0.005$ (essentially zero!)
+\end{itemize}
+
+Early layers barely learn, making deep networks ineffective.
+
+\subsubsection{The Solution: Residual Connections}
+
+Instead of learning a direct mapping $\mathbf{y} = \mathcal{F}(\mathbf{x})$, learn a \textbf{residual}:
+
+\[
+\mathbf{y} = \mathcal{F}(\mathbf{x}) + \mathbf{x}
+\]
+
+The network learns the \textbf{difference} (residual) from the identity mapping.
+
+\begin{theorybox}[Key Insight: Identity Mapping]
+With a skip connection, the network can learn the identity function by simply setting $\mathcal{F}(\mathbf{x}) = 0$ (all weights to zero).
+
+\textbf{Why this matters:}
+\begin{itemize}
+    \item Identity is easy to learn (do nothing)
+    \item Network starts with identity, then learns refinements
+    \item Even if $\mathcal{F}$ is poorly initialized, gradients still flow through skip connection
+    \item Optimization becomes: "How should I modify the input?" instead of "What should the output be?"
+\end{itemize}
+\end{theorybox}
+
+\subsubsection{Gradient Flow Through Skip Connections}
+
+During backpropagation with skip connections:
+
+\[
+\frac{\partial \mathcal{L}}{\partial \mathbf{x}} = \frac{\partial \mathcal{L}}{\partial \mathbf{y}} \left( \frac{\partial \mathcal{F}}{\partial \mathbf{x}} + 1 \right)
+\]
+
+The $+1$ term creates a \textbf{gradient highway}:
+\begin{itemize}
+    \item Gradients always have a direct path backward (through the $+1$)
+    \item Even if $\frac{\partial \mathcal{F}}{\partial \mathbf{x}} \approx 0$, gradients still flow
+    \item No vanishing gradient problem!
+\end{itemize}
+
+\textbf{Analogy:} Regular network = narrow mountain trail (one path, easy to get stuck)
+
+Skip connections = trail + highway (gradient can always get through)
+
+\clearpage
+\subsubsection{Residual Block Variants}
+
+\textbf{Basic Residual Block (Original):}
+
+\begin{verbatim}
+Input (x)
+   |
+   ├─────────────┐  (skip connection)
+   |             |
+ Conv 3x3        |
+   |             |
+ BatchNorm       |
+   |             |
+  ReLU           |
+   |             |
+ Conv 3x3        |
+   |             |
+ BatchNorm       |
+   |             |
+   +─────────────┘  (addition)
+   |
+  ReLU
+   |
+Output (y)
+\end{verbatim}
+
+\textbf{Pre-Activation Residual Block (Improved):}
+
+\begin{verbatim}
+Input (x)
+   |
+   ├─────────────┐  (skip connection)
+   |             |
+ BatchNorm       |
+   |             |
+  ReLU           |
+   |             |
+ Conv 3x3        |
+   |             |
+ BatchNorm       |
+   |             |
+  ReLU           |
+   |             |
+ Conv 3x3        |
+   |             |
+   +─────────────┘  (addition)
+   |
+Output (y)
+\end{verbatim}
+
+\textbf{Difference:}
+\begin{itemize}
+    \item \textbf{Post-activation:} Conv → BN → ReLU (then add)
+    \item \textbf{Pre-activation:} BN → ReLU → Conv (then add)
+\end{itemize}
+
+\textbf{Pre-activation advantages:}
+\begin{itemize}
+    \item Better gradient flow (identity mapping is truly unimpeded)
+    \item Easier optimization
+    \item Better for very deep networks (>100 layers)
+\end{itemize}
+
+\subsubsection{When Dimensions Don't Match}
+
+If input and output have different dimensions, use a \textbf{projection shortcut}:
+
+\[
+\mathbf{y} = \mathcal{F}(\mathbf{x}) + \mathbf{W}_s\mathbf{x}
+\]
+
+where $\mathbf{W}_s$ is a linear projection (1×1 convolution).
+
+\textbf{Two approaches:}
+
+\begin{enumerate}
+    \item \textbf{Identity shortcut + zero padding:} Pad channels with zeros (parameter-free)
+    \item \textbf{Projection shortcut:} Use 1×1 conv to match dimensions (adds parameters)
+\end{enumerate}
+
+Most implementations use projection shortcuts when dimensions change.
+
+\subsection{Implementation: Building Residual Blocks}
+
+\subsubsection{Basic Residual Block}
+
+\begin{lstlisting}
+import torch
+import torch.nn as nn
+
+class BasicBlock(nn.Module):
+    """Basic residual block with two 3x3 convolutions."""
+    
+    def __init__(self, in_channels, out_channels, stride=1):
+        super().__init__()
+        
+        # Main path
+        self.conv1 = nn.Conv2d(in_channels, out_channels, 
+                              kernel_size=3, stride=stride, padding=1, 
+                              bias=False)
+        self.bn1 = nn.BatchNorm2d(out_channels)
+        self.relu = nn.ReLU(inplace=True)
+        
+        self.conv2 = nn.Conv2d(out_channels, out_channels,
+                              kernel_size=3, stride=1, padding=1,
+                              bias=False)
+        self.bn2 = nn.BatchNorm2d(out_channels)
+        
+        # Skip connection (identity or projection)
+        self.skip = nn.Sequential()
+        if stride != 1 or in_channels != out_channels:
+            self.skip = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels, 
+                         kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(out_channels)
+            )
+    
+    def forward(self, x):
+        identity = x
+        
+        # Main path
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+        
+        out = self.conv2(out)
+        out = self.bn2(out)
+        
+        # Skip connection
+        identity = self.skip(identity)
+        
+        # Add residual
+        out += identity
+        out = self.relu(out)
+        
+        return out
+
+# Test
+block = BasicBlock(64, 64)
+x = torch.randn(4, 64, 32, 32)
+y = block(x)
+print(y.shape)  # torch.Size([4, 64, 32, 32])
+
+# Test with dimension change
+block_downsample = BasicBlock(64, 128, stride=2)
+y2 = block_downsample(x)
+print(y2.shape)  # torch.Size([4, 128, 16, 16])
+\end{lstlisting}
+
+\begin{pytorchtip}[Why bias=False?]
+When using batch normalization immediately after convolution, the bias is redundant (BatchNorm has its own bias term). Setting \texttt{bias=False} saves parameters and computation without affecting performance.
+\end{pytorchtip}
+
+\clearpage
+\subsubsection{Pre-Activation Residual Block}
+
+\begin{lstlisting}
+class PreActBlock(nn.Module):
+    """Pre-activation residual block (improved version)."""
+    
+    def __init__(self, in_channels, out_channels, stride=1):
+        super().__init__()
+        
+        # Pre-activation
+        self.bn1 = nn.BatchNorm2d(in_channels)
+        self.relu = nn.ReLU(inplace=True)
+        self.conv1 = nn.Conv2d(in_channels, out_channels,
+                              kernel_size=3, stride=stride, padding=1,
+                              bias=False)
+        
+        self.bn2 = nn.BatchNorm2d(out_channels)
+        self.conv2 = nn.Conv2d(out_channels, out_channels,
+                              kernel_size=3, stride=1, padding=1,
+                              bias=False)
+        
+        # Skip connection
+        self.skip = nn.Sequential()
+        if stride != 1 or in_channels != out_channels:
+            self.skip = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels,
+                         kernel_size=1, stride=stride, bias=False)
+            )
+    
+    def forward(self, x):
+        # Pre-activation
+        out = self.bn1(x)
+        out = self.relu(out)
+        
+        # Save for skip connection (after activation)
+        identity = self.skip(out)
+        
+        # First conv
+        out = self.conv1(out)
+        
+        # Second pre-activation + conv
+        out = self.bn2(out)
+        out = self.relu(out)
+        out = self.conv2(out)
+        
+        # Add residual (no activation after addition!)
+        out += identity
+        
+        return out
+\end{lstlisting}
+
+\textbf{Key difference:} In pre-activation, the final addition has no activation. The next block will apply activation first.
+
+\subsubsection{Bottleneck Block}
+
+For deeper networks (ResNet-50+), use bottleneck blocks to reduce parameters:
+
+\begin{lstlisting}
+class BottleneckBlock(nn.Module):
+    """
+    Bottleneck block: 1x1 -> 3x3 -> 1x1
+    Reduces parameters by using 1x1 convolutions to reduce/expand channels.
+    """
+    expansion = 4  # Output channels = input channels * 4
+    
+    def __init__(self, in_channels, out_channels, stride=1):
+        super().__init__()
+        
+        # Bottleneck: reduce channels
+        self.conv1 = nn.Conv2d(in_channels, out_channels, 
+                              kernel_size=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(out_channels)
+        
+        # Main 3x3 conv
+        self.conv2 = nn.Conv2d(out_channels, out_channels,
+                              kernel_size=3, stride=stride, 
+                              padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(out_channels)
+        
+        # Expand channels
+        self.conv3 = nn.Conv2d(out_channels, out_channels * self.expansion,
+                              kernel_size=1, bias=False)
+        self.bn3 = nn.BatchNorm2d(out_channels * self.expansion)
+        
+        self.relu = nn.ReLU(inplace=True)
+        
+        # Skip connection
+        self.skip = nn.Sequential()
+        if stride != 1 or in_channels != out_channels * self.expansion:
+            self.skip = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels * self.expansion,
+                         kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(out_channels * self.expansion)
+            )
+    
+    def forward(self, x):
+        identity = x
+        
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+        
+        out = self.conv2(out)
+        out = self.bn2(out)
+        out = self.relu(out)
+        
+        out = self.conv3(out)
+        out = self.bn3(out)
+        
+        identity = self.skip(identity)
+        out += identity
+        out = self.relu(out)
+        
+        return out
+
+# Compare parameters
+basic = BasicBlock(256, 256)
+bottleneck = BottleneckBlock(256, 64)  # Output: 64*4 = 256
+
+basic_params = sum(p.numel() for p in basic.parameters())
+bottleneck_params = sum(p.numel() for p in bottleneck.parameters())
+
+print(f"Basic block: {basic_params:,} parameters")
+print(f"Bottleneck: {bottleneck_params:,} parameters")
+# Basic block: ~590,000 parameters
+# Bottleneck: ~70,000 parameters (much fewer!)
+\end{lstlisting}
+
+\clearpage
+\subsubsection{Building a Complete ResNet}
+
+\begin{lstlisting}
+class ResNet(nn.Module):
+    """ResNet architecture for CIFAR-10."""
+    
+    def __init__(self, block, num_blocks, num_classes=10):
+        """
+        Args:
+            block: BasicBlock or BottleneckBlock
+            num_blocks: List of number of blocks per layer
+            num_classes: Number of output classes
+        """
+        super().__init__()
+        self.in_channels = 64
+        
+        # Initial convolution
+        self.conv1 = nn.Conv2d(3, 64, kernel_size=3, 
+                              stride=1, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(64)
+        self.relu = nn.ReLU(inplace=True)
+        
+        # Residual layers
+        self.layer1 = self._make_layer(block, 64, num_blocks[0], stride=1)
+        self.layer2 = self._make_layer(block, 128, num_blocks[1], stride=2)
+        self.layer3 = self._make_layer(block, 256, num_blocks[2], stride=2)
+        self.layer4 = self._make_layer(block, 512, num_blocks[3], stride=2)
+        
+        # Global pooling and classifier
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.fc = nn.Linear(512 * block.expansion, num_classes)
+    
+    def _make_layer(self, block, out_channels, num_blocks, stride):
+        """Create a layer with multiple residual blocks."""
+        strides = [stride] + [1] * (num_blocks - 1)
+        layers = []
+        
+        for stride in strides:
+            layers.append(block(self.in_channels, out_channels, stride))
+            self.in_channels = out_channels * block.expansion
+        
+        return nn.Sequential(*layers)
+    
+    def forward(self, x):
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+        
+        out = self.layer1(out)
+        out = self.layer2(out)
+        out = self.layer3(out)
+        out = self.layer4(out)
+        
+        out = self.avgpool(out)
+        out = out.view(out.size(0), -1)
+        out = self.fc(out)
+        
+        return out
+
+# ResNet-18
+def ResNet18(num_classes=10):
+    return ResNet(BasicBlock, [2, 2, 2, 2], num_classes)
+
+# ResNet-34
+def ResNet34(num_classes=10):
+    return ResNet(BasicBlock, [3, 4, 6, 3], num_classes)
+
+# ResNet-50 (uses bottleneck)
+def ResNet50(num_classes=10):
+    # Note: BottleneckBlock needs expansion=4
+    BottleneckBlock.expansion = 4
+    return ResNet(BottleneckBlock, [3, 4, 6, 3], num_classes)
+
+# Test
+model = ResNet18()
+x = torch.randn(4, 3, 32, 32)
+y = model(x)
+print(y.shape)  # torch.Size([4, 10])
+
+# Count parameters
+total_params = sum(p.numel() for p in model.parameters())
+print(f"ResNet-18: {total_params:,} parameters")
+\end{lstlisting}
+
+\begin{pytorchtip}[ResNet Naming]
+ResNet-N refers to the total number of weight layers:
+
+\textbf{ResNet-18:} 1 initial conv + 4 layers × 2 blocks × 2 convs + 1 FC = 18 layers
+
+\textbf{ResNet-34:} 1 + (3+4+6+3) × 2 + 1 = 34 layers
+
+\textbf{ResNet-50:} 1 + (3+4+6+3) × 3 + 1 = 50 layers (bottleneck has 3 convs)
+
+Deeper = more capacity but slower training/inference.
+\end{pytorchtip}
+
+\clearpage
+\subsubsection{Dense Connections (DenseNet)}
+
+DenseNet takes skip connections further: \textbf{every layer connects to every other layer}.
+
+\begin{lstlisting}
+class DenseBlock(nn.Module):
+    """Dense block where each layer receives all previous layers as input."""
+    
+    def __init__(self, in_channels, growth_rate, num_layers):
+        """
+        Args:
+            in_channels: Initial number of channels
+            growth_rate: Number of channels added per layer
+            num_layers: Number of layers in the dense block
+        """
+        super().__init__()
+        
+        self.layers = nn.ModuleList()
+        for i in range(num_layers):
+            self.layers.append(
+                self._make_dense_layer(in_channels + i * growth_rate, 
+                                      growth_rate)
+            )
+    
+    def _make_dense_layer(self, in_channels, growth_rate):
+        return nn.Sequential(
+            nn.BatchNorm2d(in_channels),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(in_channels, growth_rate, kernel_size=3, 
+                     padding=1, bias=False)
+        )
+    
+    def forward(self, x):
+        features = [x]
+        for layer in self.layers:
+            # Concatenate all previous feature maps
+            new_features = layer(torch.cat(features, dim=1))
+            features.append(new_features)
+        
+        # Return concatenation of all features
+        return torch.cat(features, dim=1)
+
+# Test
+block = DenseBlock(in_channels=64, growth_rate=32, num_layers=4)
+x = torch.randn(2, 64, 16, 16)
+y = block(x)
+print(y.shape)  # torch.Size([2, 192, 16, 16])
+# 192 = 64 (input) + 4 * 32 (4 layers, each adds 32 channels)
+\end{lstlisting}
+
+\textbf{DenseNet characteristics:}
+\begin{itemize}
+    \item \textbf{Feature reuse:} All layers have access to all previous features
+    \item \textbf{Fewer parameters:} Smaller growth\_rate than ResNet channel counts
+    \item \textbf{Memory intensive:} Must store all intermediate features
+    \item \textbf{Better gradient flow:} Even better than ResNet
+\end{itemize}
+
+\textbf{When to use DenseNet vs ResNet:}
+\begin{itemize}
+    \item \textbf{DenseNet:} When parameter efficiency is critical, smaller datasets
+    \item \textbf{ResNet:} When memory is limited, faster training/inference, more standard
+\end{itemize}
+
+\subsubsection{Skip Connections in Practice}
+
+\textbf{General principles for adding skip connections:}
+
+\begin{enumerate}
+    \item \textbf{Add skip every 2-3 layers:} Balance between gradient flow and complexity
+    \item \textbf{Match dimensions:} Use projection when channels or spatial size change
+    \item \textbf{Identity when possible:} Projection-free shortcuts are better
+    \item \textbf{Add before final activation:} Preserves identity mapping
+    \item \textbf{Don't overdo it:} Too many skip connections can hurt performance
+\end{enumerate}
+
+\textbf{Example: Adding skip connections to existing MLP:}
+
+\begin{lstlisting}
+class MLPWithSkipConnections(nn.Module):
+    """MLP with residual connections."""
+    
+    def __init__(self, input_dim, hidden_dim, output_dim, num_layers=4):
+        super().__init__()
+        
+        self.input_layer = nn.Linear(input_dim, hidden_dim)
+        
+        # Hidden layers with skip connections
+        self.hidden_layers = nn.ModuleList()
+        for _ in range(num_layers):
+            self.hidden_layers.append(
+                nn.Sequential(
+                    nn.Linear(hidden_dim, hidden_dim),
+                    nn.ReLU(),
+                    nn.Linear(hidden_dim, hidden_dim)
+                )
+            )
+        
+        self.output_layer = nn.Linear(hidden_dim, output_dim)
+        self.relu = nn.ReLU()
+    
+    def forward(self, x):
+        x = self.relu(self.input_layer(x))
+        
+        # Apply each hidden layer with skip connection
+        for layer in self.hidden_layers:
+            residual = x
+            x = layer(x)
+            x = x + residual  # Skip connection
+            x = self.relu(x)
+        
+        x = self.output_layer(x)
+        return x
+\end{lstlisting}
+
+\clearpage
+% =============================================
+% SECTION 8: RESNET - PART 2 (Exercises & Debugging)
+% =============================================
+
+\subsection{Implementation: Debugging ResNets}
+
+\subsubsection{Verifying Skip Connections}
+
+\begin{lstlisting}
+def verify_skip_connections(model, input_shape=(1, 3, 32, 32)):
+    """Verify that skip connections are working."""
+    x = torch.randn(*input_shape, requires_grad=True)
+    
+    # Forward pass
+    output = model(x)
+    loss = output.sum()
+    
+    # Backward pass
+    loss.backward()
+    
+    # Check if gradients reach input
+    if x.grad is not None:
+        print(f"✓ Gradients flow to input: {x.grad.abs().mean().item():.6f}")
+    else:
+        print("✗ No gradients at input!")
+    
+    # Check gradient magnitudes throughout network
+    print("\nGradient magnitudes by layer:")
+    for name, param in model.named_parameters():
+        if param.grad is not None:
+            grad_mean = param.grad.abs().mean().item()
+            grad_max = param.grad.abs().max().item()
+            print(f"{name:30s}: mean={grad_mean:.6f}, max={grad_max:.6f}")
+
+# Usage
+# model = ResNet18()
+# verify_skip_connections(model)
+\end{lstlisting}
+
+\subsubsection{Comparing With and Without Skip Connections}
+
+\begin{lstlisting}
+class PlainCNN(nn.Module):
+    """Same architecture as ResNet but without skip connections."""
+    
+    def __init__(self, num_classes=10):
+        super().__init__()
+        
+        self.conv1 = nn.Conv2d(3, 64, 3, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(64)
+        
+        # Same structure as ResNet-18 but no skip connections
+        self.layers = nn.Sequential(
+            # Layer 1
+            nn.Conv2d(64, 64, 3, padding=1, bias=False),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.Conv2d(64, 64, 3, padding=1, bias=False),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            
+            # Layer 2 (with stride=2 downsampling)
+            nn.Conv2d(64, 128, 3, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.Conv2d(128, 128, 3, padding=1, bias=False),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            
+            # Continue pattern...
+        )
+        
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.fc = nn.Linear(512, num_classes)
+    
+    def forward(self, x):
+        x = nn.ReLU()(self.bn1(self.conv1(x)))
+        x = self.layers(x)
+        x = self.avgpool(x)
+        x = x.view(x.size(0), -1)
+        return self.fc(x)
+
+# Compare training curves
+# plain_model = PlainCNN()
+# resnet_model = ResNet18()
+# Train both and plot losses - ResNet should converge faster and better
+\end{lstlisting}
+
+\subsection{Exercises}
+
+\begin{exercise}[8.1: Basic Residual Block - $\bigstar\bigstar$]
+\textbf{Goal:} Implement and understand a basic residual block.
+
+\begin{enumerate}
+    \item Implement a \texttt{BasicBlock} with two 3×3 convolutions
+    \item Include skip connection with projection for dimension changes
+    \item Test with different input/output channels:
+    \begin{itemize}
+        \item Same channels (64 → 64)
+        \item Different channels (64 → 128)
+        \item With downsampling (stride=2)
+    \end{itemize}
+    \item Verify output shapes match expected dimensions
+\end{enumerate}
+
+\textbf{Starter code:}
+\begin{lstlisting}
+class MyBasicBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, stride=1):
+        super().__init__()
+        # Your code here
+    
+    def forward(self, x):
+        # Your code here
+        pass
+
+# Test cases
+block1 = MyBasicBlock(64, 64, stride=1)
+block2 = MyBasicBlock(64, 128, stride=2)
+
+x = torch.randn(4, 64, 32, 32)
+print(block1(x).shape)  # Should be [4, 64, 32, 32]
+print(block2(x).shape)  # Should be [4, 128, 16, 16]
+\end{lstlisting}
+\end{exercise}
+
+\begin{exercise}[8.2: Plain vs Residual Comparison - $\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Empirically verify that skip connections help.
+
+\begin{enumerate}
+    \item Build two identical networks (10 layers each):
+    \begin{itemize}
+        \item One \textbf{without} skip connections (plain CNN)
+        \item One \textbf{with} skip connections (ResNet-style)
+    \end{itemize}
+    \item Train both on CIFAR-10 or MNIST
+    \item Track and plot:
+    \begin{itemize}
+        \item Training loss
+        \item Validation accuracy
+        \item Gradient magnitudes in early layers
+    \end{itemize}
+    \item Observe: ResNet should train faster and achieve better accuracy
+\end{enumerate}
+
+\textbf{Questions to answer:}
+\begin{itemize}
+    \item How much faster does ResNet converge?
+    \item What's the final accuracy difference?
+    \item How do gradient magnitudes compare?
+\end{itemize}
+\end{exercise}
+
+\begin{exercise}[8.3: Pre-Activation vs Post-Activation - $\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Compare residual block variants.
+
+\begin{enumerate}
+    \item Implement both post-activation and pre-activation blocks
+    \item Build identical ResNets with each type
+    \item Train on the same dataset
+    \item Compare:
+    \begin{itemize}
+        \item Training stability (loss curves)
+        \item Final accuracy
+        \item Training time
+    \end{itemize}
+\end{enumerate}
+
+\textbf{Hypothesis:} Pre-activation should be slightly better, especially for deeper networks.
+
+\textbf{Extension:} Try with different depths (18, 34, 50 layers) and see if the gap widens.
+\end{exercise}
+
+\begin{exercise}[8.4: Building ResNet-18 - $\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Build a complete ResNet from scratch.
+
+\begin{enumerate}
+    \item Implement ResNet-18 architecture:
+    \begin{itemize}
+        \item Initial 7×7 conv (or 3×3 for CIFAR)
+        \item 4 residual layers with [2, 2, 2, 2] blocks
+        \item Channels: 64 → 128 → 256 → 512
+        \item Global average pooling + FC
+    \end{itemize}
+    \item Train on CIFAR-10
+    \item Achieve >90\% test accuracy
+    \item Save the model and load it for inference
+\end{enumerate}
+
+\textbf{Bonus:} Visualize learned features in first convolutional layer.
+\end{exercise}
+
+\begin{exercise}[8.5: Bottleneck Block - $\bigstar\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Implement parameter-efficient bottleneck blocks.
+
+\begin{enumerate}
+    \item Implement \texttt{BottleneckBlock}: 1×1 → 3×3 → 1×1
+    \item Compare parameter count with \texttt{BasicBlock} for same input/output
+    \item Build ResNet-50 using bottleneck blocks
+    \item Train and compare with ResNet-18:
+    \begin{itemize}
+        \item Accuracy (ResNet-50 should be better)
+        \item Training time (ResNet-50 slower)
+        \item Memory usage
+    \end{itemize}
+\end{enumerate}
+
+\textbf{Challenge:} How deep can you go before hitting memory limits? Try ResNet-101.
+\end{exercise}
+
+\begin{exercise}[8.6: Skip Connections in U-Net - $\bigstar\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Apply skip connections to encoder-decoder architectures.
+
+\begin{enumerate}
+    \item Take the U-Net from CNN section (Exercise 7.5)
+    \item Add residual blocks in encoder and decoder paths
+    \item Train on image denoising task
+    \item Compare with original U-Net:
+    \begin{itemize}
+        \item Denoising quality (PSNR/SSIM)
+        \item Training stability
+        \item Convergence speed
+    \end{itemize}
+\end{enumerate}
+
+\textbf{Architecture:}
+\begin{itemize}
+    \item Replace conv blocks with residual blocks
+    \item Keep skip connections between encoder/decoder
+    \item Use both residual blocks AND U-Net skip connections
+\end{itemize}
+\end{exercise}
+
+\begin{exercise}[8.7: Dense Block Implementation - $\bigstar\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Implement and understand DenseNet.
+
+\begin{enumerate}
+    \item Implement a \texttt{DenseBlock} where each layer receives all previous layers
+    \item Implement a transition layer (1×1 conv + pooling) to reduce channels
+    \item Build a small DenseNet:
+    \begin{itemize}
+        \item 3 dense blocks with growth\_rate=12
+        \item Transition layers between blocks
+        \item Final global pooling + FC
+    \end{itemize}
+    \item Compare with ResNet of similar depth:
+    \begin{itemize}
+        \item Parameter count (DenseNet should be fewer)
+        \item Memory usage (DenseNet higher during training)
+        \item Accuracy
+    \end{itemize}
+\end{enumerate}
+
+\textbf{Hint:} Use \texttt{torch.cat()} to concatenate feature maps along channel dimension.
+\end{exercise}
+
+\clearpage
+\subsection{Key Takeaways}
+
+\textbf{The fundamental problem:}
+\begin{itemize}
+    \item Very deep networks suffer from degradation (not just overfitting)
+    \item Vanishing gradients make early layers hard to train
+    \item Optimization becomes difficult, not just capacity
+\end{itemize}
+
+\textbf{How skip connections solve it:}
+\begin{itemize}
+    \item Create gradient highways: $\frac{\partial \mathcal{L}}{\partial \mathbf{x}}$ always has $+1$ term
+    \item Learn residuals instead of direct mappings (easier optimization)
+    \item Enable training of 100+ layer networks
+    \item Identity mapping is easy to learn (set weights to zero)
+\end{itemize}
+
+\textbf{Residual block variants:}
+\begin{itemize}
+    \item \textbf{Post-activation:} Conv → BN → ReLU, then add (original)
+    \item \textbf{Pre-activation:} BN → ReLU → Conv, then add (improved)
+    \item \textbf{Bottleneck:} 1×1 → 3×3 → 1×1 (for deeper networks, fewer parameters)
+    \item \textbf{Dense:} Every layer connects to all previous layers (extreme skip connections)
+\end{itemize}
+
+\textbf{Implementation guidelines:}
+\begin{itemize}
+    \item Use projection shortcuts when dimensions change
+    \item Set \texttt{bias=False} when using BatchNorm
+    \item Add skip connections every 2-3 layers
+    \item Pre-activation is better for very deep networks (>100 layers)
+    \item Use bottleneck blocks for ResNet-50+
+\end{itemize}
+
+\textbf{When to use skip connections:}
+\begin{itemize}
+    \item \textbf{Always use for deep networks (>20 layers)}
+    \item \textbf{Vision tasks:} ResNet is standard backbone
+    \item \textbf{U-Net style architectures:} Encoder-decoder with skip connections
+    \item \textbf{Any architecture where gradient flow is critical}
+    \item \textbf{When training is unstable or slow}
+\end{itemize}
+
+\textbf{Architecture choices:}
+\begin{table}[h]
+\centering
+\begin{tabular}{llll}
+\toprule
+\textbf{Model} & \textbf{Layers} & \textbf{Use Case} & \textbf{Parameters} \\
+\midrule
+ResNet-18 & 18 & General purpose, fast & 11M \\
+ResNet-34 & 34 & More capacity & 21M \\
+ResNet-50 & 50 & High accuracy & 25M \\
+ResNet-101 & 101 & Maximum accuracy & 44M \\
+DenseNet-121 & 121 & Parameter efficient & 8M \\
+\bottomrule
+\end{tabular}
+\caption{Popular ResNet/DenseNet architectures}
+\end{table}
+
+\textbf{Impact on deep learning:}
+\begin{itemize}
+    \item Enabled training of 100+ layer networks
+    \item Now standard in almost all vision models
+    \item Extended to other domains (Transformers use similar ideas)
+    \item Fundamental principle: make it easy for network to learn identity
+\end{itemize}
+
+\textbf{Debugging tips:}
+\begin{itemize}
+    \item Verify gradients flow to early layers
+    \item Compare with plain network (without skip connections)
+    \item Check gradient magnitudes throughout network
+    \item Visualize activations in residual blocks
+    \item If training fails, check skip connection implementation
+\end{itemize}
+
+\textbf{Common mistakes:}
+\begin{enumerate}
+    \item Forgetting projection when dimensions change
+    \item Applying activation after addition in pre-activation blocks
+    \item Not using BatchNorm (skip connections alone aren't enough)
+    \item Making skip connection too complex (keep it identity when possible)
+    \item Adding too many skip connections (can hurt performance)
+\end{enumerate}
+
+\begin{pytorchtip}[Rule of Thumb]
+\textbf{For networks >20 layers:} Always use residual connections
+
+\textbf{For networks >50 layers:} Use bottleneck blocks
+
+\textbf{For networks >100 layers:} Use pre-activation blocks
+
+\textbf{When in doubt:} Use ResNet as your starting point and modify from there.
+\end{pytorchtip}
+
+\clearpage

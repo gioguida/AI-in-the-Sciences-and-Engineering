@@ -1,0 +1,733 @@
+% =============================================
+% SECTION 9: BATCH NORMALIZATION & LAYER NORMALIZATION
+% =============================================
+
+\section{Batch Normalization \& Layer Normalization}
+
+\subsection{Introduction: Why Normalization Matters}
+
+Training deep networks is hard. As gradients flow backward, they can vanish or explode. As data flows forward, the distribution of activations can shift. These issues slow training and make networks sensitive to initialization.
+
+\textbf{Normalization techniques} stabilize training by controlling the distribution of activations.
+
+\textbf{Key benefits:}
+\begin{itemize}
+    \item \textbf{Faster training:} Can use higher learning rates (2-10× speedup)
+    \item \textbf{Less sensitivity to initialization:} Network more robust
+    \item \textbf{Regularization effect:} Acts like dropout (slight noise from batch statistics)
+    \item \textbf{Enables deeper networks:} Makes 100+ layer networks trainable
+\end{itemize}
+
+\textbf{When you need normalization:}
+\begin{itemize}
+    \item Deep networks (>10 layers)
+    \item Training is slow or unstable
+    \item Network sensitive to learning rate or initialization
+    \item Using high learning rates
+\end{itemize}
+
+\subsection{Theory: Batch Normalization}
+
+\subsubsection{The Problem: Internal Covariate Shift}
+
+As we train, the distribution of inputs to each layer changes. This is called \textbf{internal covariate shift}.
+
+\textbf{Example:} Consider layer 3 of a network.
+\begin{itemize}
+    \item Early in training: inputs to layer 3 might have mean=0.5, std=0.3
+    \item After 100 steps: mean=2.1, std=1.8 (distribution has shifted!)
+\end{itemize}
+
+Each layer must constantly adapt to the changing distribution. This slows learning.
+
+\textbf{Batch Normalization's solution:} Normalize inputs to each layer to have consistent statistics.
+
+\subsubsection{How Batch Normalization Works}
+
+Given a batch of inputs $\mathbf{x} = \{x_1, x_2, \ldots, x_m\}$:
+
+\textbf{Step 1: Compute batch statistics}
+\[
+\mu_B = \frac{1}{m} \sum_{i=1}^m x_i \quad \text{(batch mean)}
+\]
+\[
+\sigma_B^2 = \frac{1}{m} \sum_{i=1}^m (x_i - \mu_B)^2 \quad \text{(batch variance)}
+\]
+
+\textbf{Step 2: Normalize}
+\[
+\hat{x}_i = \frac{x_i - \mu_B}{\sqrt{\sigma_B^2 + \epsilon}}
+\]
+
+where $\epsilon$ is a small constant (typically $10^{-5}$) for numerical stability.
+
+\textbf{Step 3: Scale and shift (learnable parameters)}
+\[
+y_i = \gamma \hat{x}_i + \beta
+\]
+
+where $\gamma$ (scale) and $\beta$ (shift) are learned parameters.
+
+\textbf{Why scale and shift?}
+The network can learn to undo the normalization if needed! If $\gamma = \sqrt{\sigma_B^2}$ and $\beta = \mu_B$, we recover the original distribution.
+
+\begin{theorybox}[Key Insight]
+Batch norm has two modes:
+
+\textbf{Training:} Use batch statistics ($\mu_B$, $\sigma_B^2$)
+\begin{itemize}
+    \item Computed from current batch
+    \item Adds stochasticity (different batches → different statistics)
+    \item Acts as regularization
+\end{itemize}
+
+\textbf{Inference:} Use running statistics ($\mu_{running}$, $\sigma_{running}^2$)
+\begin{itemize}
+    \item Exponential moving average from training
+    \item Deterministic (same input → same output)
+    \item No batch dependency
+\end{itemize}
+
+\textbf{During training, PyTorch maintains:}
+\[
+\mu_{running} \leftarrow (1 - \text{momentum}) \cdot \mu_{running} + \text{momentum} \cdot \mu_B
+\]
+
+Default momentum = 0.1.
+\end{theorybox}
+
+\clearpage
+\subsubsection{Why Batch Normalization Helps}
+
+\textbf{1. Smooths the optimization landscape}
+
+Batch norm makes the loss surface smoother, allowing larger learning rates.
+
+\textbf{2. Reduces internal covariate shift}
+
+Each layer receives inputs with consistent statistics.
+
+\textbf{3. Acts as regularization}
+
+Noise from batch statistics acts like dropout (but usually weaker).
+
+\textbf{4. Reduces sensitivity to initialization}
+
+Even with poor initialization, batch norm helps normalize activations.
+
+\textbf{5. Allows higher learning rates}
+
+The smoothing effect permits learning rates 10× higher than without batch norm.
+
+\subsubsection{Limitations of Batch Normalization}
+
+\textbf{1. Requires large enough batches}
+
+With batch\_size < 8, batch statistics are unreliable. Solution: Use LayerNorm or GroupNorm.
+
+\textbf{2. Different behavior in train/eval}
+
+Must remember to call \texttt{model.train()} and \texttt{model.eval()}. Forgetting this is a common bug!
+
+\textbf{3. Doesn't work well for RNNs}
+
+Batch statistics across sequence positions don't make sense. Solution: Use LayerNorm.
+
+\textbf{4. Coupling between samples in batch}
+
+Each sample's normalization depends on other samples in the batch. Can cause issues in some scenarios.
+
+\subsection{Theory: Layer Normalization}
+
+Layer Normalization normalizes across features instead of across the batch.
+
+\textbf{Batch Norm:} Normalize each feature across the batch
+\[
+\hat{x}_{ij} = \frac{x_{ij} - \mu_j}{\sqrt{\sigma_j^2 + \epsilon}} \quad \text{where } \mu_j = \frac{1}{m}\sum_{i=1}^m x_{ij}
+\]
+(Averages over batch dimension $i$ for each feature $j$)
+
+\textbf{Layer Norm:} Normalize all features for each sample
+\[
+\hat{x}_{ij} = \frac{x_{ij} - \mu_i}{\sqrt{\sigma_i^2 + \epsilon}} \quad \text{where } \mu_i = \frac{1}{d}\sum_{j=1}^d x_{ij}
+\]
+(Averages over feature dimension $j$ for each sample $i$)
+
+\textbf{Key differences:}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\toprule
+\textbf{Aspect} & \textbf{Batch Norm} & \textbf{Layer Norm} \\
+\midrule
+Normalizes over & Batch dimension & Feature dimension \\
+Batch size dependency & Yes (fails for small batches) & No (works with batch=1) \\
+Train/eval modes & Different & Same \\
+Learnable params & $\gamma, \beta$ per feature & $\gamma, \beta$ per feature \\
+Best for & CNNs, MLPs & RNNs, Transformers \\
+Running statistics & Yes & No \\
+\bottomrule
+\end{tabular}
+\caption{Batch Norm vs Layer Norm}
+\end{table}
+
+\textbf{When to use Layer Norm:}
+\begin{itemize}
+    \item RNNs and sequence models
+    \item Transformers (standard choice)
+    \item Small batch sizes (batch\_size < 8)
+    \item Online learning (single sample at a time)
+    \item When you want same behavior in train/eval
+\end{itemize}
+
+\clearpage
+\subsection{Implementation: Using Normalization in PyTorch}
+
+\subsubsection{Batch Normalization Usage}
+
+\begin{lstlisting}
+import torch
+import torch.nn as nn
+
+# For 1D data (MLPs, sequences)
+bn1d = nn.BatchNorm1d(num_features=128)
+
+# For 2D data (CNNs)
+bn2d = nn.BatchNorm2d(num_features=64)
+
+# For 3D data (3D CNNs, video)
+bn3d = nn.BatchNorm3d(num_features=32)
+
+# Example: CNN with batch norm
+model = nn.Sequential(
+    nn.Conv2d(3, 64, 3, padding=1),
+    nn.BatchNorm2d(64),  # Batch norm after conv
+    nn.ReLU(),
+    
+    nn.Conv2d(64, 128, 3, padding=1),
+    nn.BatchNorm2d(128),
+    nn.ReLU(),
+)
+
+# Training mode (default)
+model.train()
+x = torch.randn(16, 3, 32, 32)
+out = model(x)  # Uses batch statistics
+
+# Evaluation mode
+model.eval()
+with torch.no_grad():
+    out = model(x)  # Uses running statistics
+\end{lstlisting}
+
+\textbf{Where to place batch norm:}
+
+\textbf{Option 1: Conv → BN → Activation (recommended)}
+\begin{lstlisting}
+nn.Conv2d(in_ch, out_ch, 3, padding=1),
+nn.BatchNorm2d(out_ch),
+nn.ReLU()
+\end{lstlisting}
+
+\textbf{Option 2: Conv → Activation → BN (less common)}
+\begin{lstlisting}
+nn.Conv2d(in_ch, out_ch, 3, padding=1),
+nn.ReLU(),
+nn.BatchNorm2d(out_ch)
+\end{lstlisting}
+
+Both work, but Option 1 is more standard.
+
+\begin{warningbox}[Critical: Set bias=False]
+When using batch norm after a linear/conv layer, set \texttt{bias=False}:
+
+\begin{lstlisting}
+# WRONG: Batch norm makes bias redundant
+nn.Conv2d(3, 64, 3, padding=1, bias=True),  # Wasteful!
+nn.BatchNorm2d(64),  # Has its own bias (beta)
+
+# CORRECT: No need for conv bias
+nn.Conv2d(3, 64, 3, padding=1, bias=False),  # No bias
+nn.BatchNorm2d(64),  # Beta parameter serves as bias
+\end{lstlisting}
+
+Why? Batch norm subtracts the mean, so any constant bias gets canceled out. The $\beta$ parameter in batch norm serves as the bias.
+\end{warningbox}
+
+\subsubsection{Layer Normalization Usage}
+
+\begin{lstlisting}
+# Layer norm normalizes over feature dimension
+ln = nn.LayerNorm(normalized_shape=128)
+
+# For sequences: (batch, seq_len, features)
+x = torch.randn(32, 100, 128)  # 32 sequences, length 100, 128 features
+out = ln(x)  # Normalizes over the 128 features for each position
+
+# Example: Transformer-style layer
+class TransformerBlock(nn.Module):
+    def __init__(self, d_model):
+        super().__init__()
+        self.attention = nn.MultiheadAttention(d_model, num_heads=8)
+        self.ln1 = nn.LayerNorm(d_model)
+        self.ffn = nn.Sequential(
+            nn.Linear(d_model, 4*d_model),
+            nn.ReLU(),
+            nn.Linear(4*d_model, d_model)
+        )
+        self.ln2 = nn.LayerNorm(d_model)
+    
+    def forward(self, x):
+        # Attention with layer norm
+        attn_out, _ = self.attention(x, x, x)
+        x = self.ln1(x + attn_out)  # Residual + norm
+        
+        # FFN with layer norm
+        ffn_out = self.ffn(x)
+        x = self.ln2(x + ffn_out)  # Residual + norm
+        
+        return x
+\end{lstlisting}
+
+\clearpage
+\subsubsection{Other Normalization Variants}
+
+\textbf{Instance Normalization (for style transfer):}
+\begin{lstlisting}
+# Normalizes each sample and channel independently
+# Used in style transfer and GANs
+in_norm = nn.InstanceNorm2d(num_features=64)
+
+# Shape: (batch, channels, height, width)
+# Computes mean/std for each (sample, channel) pair over (H, W)
+\end{lstlisting}
+
+\textbf{Group Normalization (hybrid approach):}
+\begin{lstlisting}
+# Divides channels into groups, normalizes within each group
+# Works well with small batch sizes
+gn = nn.GroupNorm(num_groups=8, num_channels=64)
+
+# Example: 64 channels → 8 groups of 8 channels each
+# Normalizes over spatial dimensions and within each group
+\end{lstlisting}
+
+\textbf{When to use each:}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{ll}
+\toprule
+\textbf{Normalization} & \textbf{Use Case} \\
+\midrule
+Batch Norm & CNNs, MLPs, large batches ($\geq 8$) \\
+Layer Norm & RNNs, Transformers, any batch size \\
+Instance Norm & Style transfer, GANs \\
+Group Norm & Small batch sizes, object detection \\
+\bottomrule
+\end{tabular}
+\caption{Choosing normalization type}
+\end{table}
+
+\subsubsection{Implementing Batch Norm from Scratch}
+
+\begin{lstlisting}
+class MyBatchNorm1d(nn.Module):
+    """Batch normalization for understanding."""
+    
+    def __init__(self, num_features, eps=1e-5, momentum=0.1):
+        super().__init__()
+        
+        # Learnable parameters
+        self.gamma = nn.Parameter(torch.ones(num_features))
+        self.beta = nn.Parameter(torch.zeros(num_features))
+        
+        # Running statistics (not trainable)
+        self.register_buffer('running_mean', torch.zeros(num_features))
+        self.register_buffer('running_var', torch.ones(num_features))
+        
+        self.eps = eps
+        self.momentum = momentum
+    
+    def forward(self, x):
+        # x shape: (batch, features)
+        
+        if self.training:
+            # Training mode: use batch statistics
+            batch_mean = x.mean(dim=0)
+            batch_var = x.var(dim=0, unbiased=False)
+            
+            # Normalize
+            x_norm = (x - batch_mean) / torch.sqrt(batch_var + self.eps)
+            
+            # Update running statistics (exponential moving average)
+            with torch.no_grad():
+                self.running_mean = (1 - self.momentum) * self.running_mean + \
+                                   self.momentum * batch_mean
+                self.running_var = (1 - self.momentum) * self.running_var + \
+                                  self.momentum * batch_var
+        else:
+            # Eval mode: use running statistics
+            x_norm = (x - self.running_mean) / \
+                     torch.sqrt(self.running_var + self.eps)
+        
+        # Scale and shift
+        out = self.gamma * x_norm + self.beta
+        
+        return out
+
+# Test
+bn = MyBatchNorm1d(10)
+x = torch.randn(32, 10)
+
+# Training mode
+bn.train()
+out_train = bn(x)
+
+# Eval mode
+bn.eval()
+out_eval = bn(x)
+
+print(f"Train output: {out_train.mean():.4f}, {out_train.std():.4f}")
+print(f"Eval output: {out_eval.mean():.4f}, {out_eval.std():.4f}")
+\end{lstlisting}
+
+\clearpage
+\subsubsection{Common Mistakes and Debugging}
+
+\textbf{Mistake 1: Forgetting to set eval mode}
+
+\begin{lstlisting}
+# WRONG: Model still in training mode during evaluation
+model.train()  # Set at beginning of training
+# ... training loop ...
+# Evaluation (FORGOT model.eval()!)
+with torch.no_grad():
+    val_loss = evaluate(model, val_loader)  # Uses batch statistics!
+
+# CORRECT:
+model.train()
+# ... training ...
+model.eval()  # Switch to eval mode
+with torch.no_grad():
+    val_loss = evaluate(model, val_loader)  # Uses running statistics
+\end{lstlisting}
+
+\textbf{Mistake 2: Small batch sizes with Batch Norm}
+
+\begin{lstlisting}
+# With batch_size=2, batch statistics are unreliable
+# Symptoms: High variance in training, poor performance
+
+# Solution 1: Increase batch size
+train_loader = DataLoader(dataset, batch_size=32)  # Instead of 2
+
+# Solution 2: Use Layer Norm or Group Norm instead
+# Replace BatchNorm2d with GroupNorm
+nn.GroupNorm(num_groups=8, num_channels=64)
+\end{lstlisting}
+
+\textbf{Mistake 3: Not setting bias=False}
+
+\begin{lstlisting}
+# WASTEFUL: Both conv and batch norm have biases
+layer = nn.Sequential(
+    nn.Conv2d(64, 128, 3, bias=True),  # Has bias
+    nn.BatchNorm2d(128)  # Also has bias (beta)
+)
+
+# EFFICIENT: Only batch norm has bias
+layer = nn.Sequential(
+    nn.Conv2d(64, 128, 3, bias=False),  # No bias
+    nn.BatchNorm2d(128)  # Beta serves as bias
+)
+\end{lstlisting}
+
+\textbf{Debugging: Check if batch norm is working}
+
+\begin{lstlisting}
+def check_batch_norm_stats(model, dataloader):
+    """Verify batch norm running statistics are being updated."""
+    
+    model.train()
+    
+    # Save initial running mean
+    bn_layer = None
+    for module in model.modules():
+        if isinstance(module, nn.BatchNorm2d):
+            bn_layer = module
+            break
+    
+    if bn_layer is None:
+        print("No BatchNorm found!")
+        return
+    
+    initial_mean = bn_layer.running_mean.clone()
+    
+    # Run one batch
+    x, _ = next(iter(dataloader))
+    _ = model(x)
+    
+    # Check if running mean changed
+    mean_changed = not torch.allclose(initial_mean, bn_layer.running_mean)
+    print(f"Running mean updated: {mean_changed}")
+    
+    # Check train vs eval difference
+    model.eval()
+    with torch.no_grad():
+        out_eval = model(x)
+    
+    model.train()
+    out_train = model(x)
+    
+    different = not torch.allclose(out_train, out_eval)
+    print(f"Train vs eval outputs differ: {different}")
+
+# Usage
+# check_batch_norm_stats(model, train_loader)
+\end{lstlisting}
+
+\clearpage
+\subsection{Exercises}
+
+\begin{exercise}[9.1: Batch Norm Impact - $\bigstar\bigstar$]
+\textbf{Goal:} See batch norm's effect empirically.
+
+Train two identical networks on CIFAR-10:
+\begin{enumerate}
+    \item \textbf{Without batch norm:} Plain CNN
+    \item \textbf{With batch norm:} Same CNN + batch norm after each conv
+\end{enumerate}
+
+Compare:
+\begin{itemize}
+    \item Training speed (epochs to reach 70\% accuracy)
+    \item Learning rate stability (try lr=0.01 and lr=0.1)
+    \item Final test accuracy
+\end{itemize}
+
+\textbf{Expected observation:} Batch norm allows higher learning rate and converges faster.
+
+\textbf{Starter code:}
+\begin{lstlisting}
+class CNNWithoutBN(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(3, 64, 3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(64, 128, 3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            # ... more layers
+        )
+
+class CNNWithBN(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(3, 64, 3, padding=1, bias=False),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            # ... add batch norm after each conv
+        )
+\end{lstlisting}
+\end{exercise}
+
+\begin{exercise}[9.2: Train vs Eval Mode - $\bigstar\bigstar$]
+\textbf{Goal:} Understand the importance of eval mode.
+
+\begin{enumerate}
+    \item Train a CNN with batch norm on MNIST
+    \item After training, evaluate on test set \textbf{without} calling \texttt{model.eval()}
+    \item Evaluate again \textbf{with} \texttt{model.eval()}
+    \item Compare test accuracies
+    \item Investigate: Try with different batch sizes during evaluation (1, 8, 64)
+\end{enumerate}
+
+\textbf{Questions:}
+\begin{itemize}
+    \item How much does forgetting eval() hurt performance?
+    \item Does batch size during eval matter when in train mode?
+    \item Why does this happen?
+\end{itemize}
+\end{exercise}
+
+\begin{exercise}[9.3: Batch Norm from Scratch - $\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Implement batch norm to understand it deeply.
+
+\begin{enumerate}
+    \item Complete the \texttt{MyBatchNorm1d} implementation from above
+    \item Extend it to \texttt{MyBatchNorm2d} for CNNs
+    \item Test that it matches PyTorch's \texttt{nn.BatchNorm2d}:
+    \begin{itemize}
+        \item Initialize both with same parameters
+        \item Feed same input
+        \item Verify outputs are close (use \texttt{torch.allclose})
+    \end{itemize}
+    \item Train a small CNN using your custom batch norm
+    \item Verify training works correctly
+\end{enumerate}
+
+\textbf{Hint for BatchNorm2d:}
+\begin{lstlisting}
+# For input shape (batch, channels, height, width)
+# Compute mean and var over dimensions (0, 2, 3)
+# This gives per-channel statistics
+batch_mean = x.mean(dim=(0, 2, 3), keepdim=True)
+batch_var = x.var(dim=(0, 2, 3), keepdim=True, unbiased=False)
+\end{lstlisting}
+\end{exercise}
+
+\begin{exercise}[9.4: Layer Norm vs Batch Norm - $\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Compare normalization types for sequences.
+
+\begin{enumerate}
+    \item Generate a sequence classification task (e.g., classify sine vs cosine)
+    \item Build an RNN with:
+    \begin{itemize}
+        \item Batch normalization
+        \item Layer normalization
+        \item No normalization
+    \end{itemize}
+    \item Train all three and compare:
+    \begin{itemize}
+        \item Training stability
+        \item Final accuracy
+        \item Effect of batch size (try 4, 16, 64)
+    \end{itemize}
+\end{enumerate}
+
+\textbf{Expected result:} Layer norm should work better for sequences, especially with small batches.
+\end{exercise}
+
+\begin{exercise}[9.5: Placement Experiments - $\bigstar\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Investigate where to place batch norm.
+
+Test different placements in a residual block:
+\begin{enumerate}
+    \item Conv → BN → ReLU
+    \item Conv → ReLU → BN
+    \item BN → ReLU → Conv (pre-activation)
+\end{enumerate}
+
+For each:
+\begin{itemize}
+    \item Train on CIFAR-10
+    \item Measure convergence speed
+    \item Check gradient flow (from Section 8)
+    \item Compare final accuracy
+\end{itemize}
+
+\textbf{Questions:}
+\begin{itemize}
+    \item Which placement works best?
+    \item Does the answer change with network depth?
+    \item How does it affect gradient flow?
+\end{itemize}
+\end{exercise}
+
+\begin{exercise}[9.6: Small Batch Challenge - $\bigstar\bigstar\bigstar\bigstar$]
+\textbf{Goal:} Handle small batch sizes effectively.
+
+\begin{enumerate}
+    \item Train a network with batch\_size=2 (deliberately small)
+    \item Try:
+    \begin{itemize}
+        \item Batch Norm (observe instability)
+        \item Layer Norm
+        \item Group Norm (8 groups)
+        \item No normalization
+    \end{itemize}
+    \item Compare training stability and final performance
+    \item Investigate: Why does batch norm fail? Look at batch statistics variance.
+\end{enumerate}
+
+\textbf{Analysis code:}
+\begin{lstlisting}
+# Check batch statistics variance
+bn_layer = model.features[1]  # Assuming second layer is BN
+means = []
+vars = []
+
+for batch in train_loader:
+    x, _ = batch
+    # Hook to capture batch statistics
+    means.append(bn_layer.running_mean.clone())
+    vars.append(bn_layer.running_var.clone())
+    model(x)
+
+# Plot variance of batch means over time
+plt.plot([m.std().item() for m in means])
+plt.title('Variance of Batch Means')
+plt.show()
+\end{lstlisting}
+\end{exercise}
+
+\clearpage
+\subsection{Key Takeaways}
+
+\textbf{Why normalization helps:}
+\begin{itemize}
+    \item Reduces internal covariate shift (distribution changes between layers)
+    \item Smooths optimization landscape (allows higher learning rates)
+    \item Provides regularization (slight noise from batch statistics)
+    \item Reduces sensitivity to initialization
+\end{itemize}
+
+\textbf{Batch Normalization:}
+\begin{itemize}
+    \item Normalizes over batch dimension
+    \item Requires large enough batches ($\geq 8$)
+    \item Different behavior in train/eval modes (critical!)
+    \item Best for CNNs and MLPs with large batches
+    \item Can speed up training by 2-10×
+\end{itemize}
+
+\textbf{Layer Normalization:}
+\begin{itemize}
+    \item Normalizes over feature dimension
+    \item Works with any batch size (even 1)
+    \item Same behavior in train/eval modes
+    \item Best for RNNs, Transformers, sequences
+    \item Standard in modern NLP models
+\end{itemize}
+
+\textbf{Implementation best practices:}
+\begin{itemize}
+    \item Place after Conv/Linear, before activation (standard)
+    \item Set \texttt{bias=False} in layer before batch norm
+    \item Always call \texttt{model.eval()} during evaluation
+    \item Use \texttt{torch.no\_grad()} during inference
+    \item For sequences: prefer Layer Norm
+    \item For small batches: use Layer Norm or Group Norm
+\end{itemize}
+
+\textbf{Common mistakes:}
+\begin{itemize}
+    \item Forgetting \texttt{model.eval()} (very common bug!)
+    \item Using Batch Norm with tiny batches
+    \item Not setting \texttt{bias=False} (wastes parameters)
+    \item Wrong normalization type for task (Batch Norm for RNNs)
+    \item Not understanding train vs eval mode difference
+\end{itemize}
+
+\textbf{Choosing normalization:}
+\begin{itemize}
+    \item \textbf{Default for CNNs:} Batch Norm
+    \item \textbf{Default for Transformers/RNNs:} Layer Norm
+    \item \textbf{Small batches (<8):} Layer Norm or Group Norm
+    \item \textbf{Style transfer:} Instance Norm
+    \item \textbf{Object detection:} Group Norm (common in modern detectors)
+\end{itemize}
+
+\textbf{When NOT to use normalization:}
+\begin{itemize}
+    \item Very shallow networks (<5 layers)
+    \item Already training stably
+    \item Certain GANs (can cause mode collapse)
+    \item When exact reproducibility needed (batch stats introduce randomness)
+\end{itemize}
+
+\clearpage
